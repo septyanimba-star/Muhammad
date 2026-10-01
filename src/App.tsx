@@ -36,6 +36,69 @@ const USER_LOCATIONS = [
   { name: 'Galela', lat: 1.80, lng: 127.85, desc: 'Halmahera Utara' },
 ];
 
+// Stasiun Seismik di Indonesia (BMKG, Geofon, IRIS, USGS)
+interface SeismicStation {
+  code: string;
+  name: string;
+  network: 'BMKG' | 'Geofon' | 'IRIS' | 'USGS';
+  lat: number;
+  lng: number;
+  elevation: number;
+  region: string;
+  status: 'active' | 'inactive';
+}
+
+const SEISMIC_STATIONS: SeismicStation[] = [
+  // BMKG Stations - Maluku Utara & sekitarnya
+  { code: 'MLI', name: 'Ternate', network: 'BMKG', lat: 0.79, lng: 127.38, elevation: 50, region: 'Maluku Utara', status: 'active' },
+  { code: 'TOB', name: 'Tobelo', network: 'BMKG', lat: 2.08, lng: 128.00, elevation: 25, region: 'Halmahera Utara', status: 'active' },
+  { code: 'LAB', name: 'Labuha', network: 'BMKG', lat: -0.70, lng: 127.85, elevation: 15, region: 'Halmahera Selatan', status: 'active' },
+  { code: 'WED', name: 'Weda', network: 'BMKG', lat: 0.25, lng: 128.20, elevation: 30, region: 'Halmahera Tengah', status: 'active' },
+  { code: 'MOR', name: 'Morotai', network: 'BMKG', lat: 2.30, lng: 128.35, elevation: 20, region: 'Pulau Morotai', status: 'active' },
+  { code: 'SOF', name: 'Sofifi', network: 'BMKG', lat: 0.72, lng: 127.55, elevation: 35, region: 'Maluku Utara', status: 'active' },
+  { code: 'MAB', name: 'Maba', network: 'BMKG', lat: 0.55, lng: 128.50, elevation: 40, region: 'Halmahera Timur', status: 'active' },
+  { code: 'KAO', name: 'Kao', network: 'BMKG', lat: 1.65, lng: 127.75, elevation: 45, region: 'Halmahera Utara', status: 'active' },
+  { code: 'GLE', name: 'Galela', network: 'BMKG', lat: 1.80, lng: 127.85, elevation: 30, region: 'Halmahera Utara', status: 'active' },
+  { code: 'TID', name: 'Tidore', network: 'BMKG', lat: 0.60, lng: 127.40, elevation: 25, region: 'Tidore Kepulauan', status: 'active' },
+  
+  // BMKG - Sulawesi & sekitarnya
+  { code: 'MNA', name: 'Manado', network: 'BMKG', lat: 1.49, lng: 124.84, elevation: 80, region: 'Sulawesi Utara', status: 'active' },
+  { code: 'PLU', name: 'Palu', network: 'BMKG', lat: -0.89, lng: 119.85, elevation: 60, region: 'Sulawesi Tengah', status: 'active' },
+  { code: 'GOR', name: 'Gorontalo', network: 'BMKG', lat: 0.53, lng: 123.06, elevation: 15, region: 'Gorontalo', status: 'active' },
+  { code: 'KDI', name: 'Kendari', network: 'BMKG', lat: -3.99, lng: 122.51, elevation: 25, region: 'Sulawesi Tenggara', status: 'active' },
+  { code: 'MDO', name: 'Makassar', network: 'BMKG', lat: -5.14, lng: 119.43, elevation: 10, region: 'Sulawesi Selatan', status: 'active' },
+  
+  // Geofon (GFZ) Stations - Indonesia
+  { code: 'JAGJ', name: 'Jagong', network: 'Geofon', lat: 4.63, lng: 96.73, elevation: 1200, region: 'Aceh', status: 'active' },
+  { code: 'SMRI', name: 'Semarang', network: 'Geofon', lat: -6.97, lng: 110.43, elevation: 50, region: 'Jawa Tengah', status: 'active' },
+  { code: 'JAY', name: 'Jayapura', network: 'Geofon', lat: -2.53, lng: 140.72, elevation: 100, region: 'Papua', status: 'active' },
+  { code: 'BANI', name: 'Banda Neira', network: 'Geofon', lat: -4.52, lng: 129.90, elevation: 15, region: 'Maluku', status: 'active' },
+  { code: 'TNT', name: 'Ternate', network: 'Geofon', lat: 0.80, lng: 127.37, elevation: 55, region: 'Maluku Utara', status: 'active' },
+  { code: 'SORO', name: 'Sorong', network: 'Geofon', lat: -0.88, lng: 131.25, elevation: 20, region: 'Papua Barat', status: 'active' },
+  { code: 'AMPI', name: 'Ambon', network: 'Geofon', lat: -3.66, lng: 128.18, elevation: 30, region: 'Maluku', status: 'active' },
+  { code: 'MANA', name: 'Manado', network: 'Geofon', lat: 1.48, lng: 124.85, elevation: 85, region: 'Sulawesi Utara', status: 'active' },
+  
+  // IRIS GSN Stations - Indonesia
+  { code: 'JAG', name: 'Jagong', network: 'IRIS', lat: 4.63, lng: 96.73, elevation: 1200, region: 'Aceh', status: 'active' },
+  { code: 'FAKI', name: 'Fakfak', network: 'IRIS', lat: -2.93, lng: 132.30, elevation: 25, region: 'Papua Barat', status: 'active' },
+  { code: 'SWRT', name: 'Sorong', network: 'IRIS', lat: -0.87, lng: 131.24, elevation: 22, region: 'Papua Barat', status: 'active' },
+  { code: 'JAYP', name: 'Jayapura', network: 'IRIS', lat: -2.54, lng: 140.71, elevation: 105, region: 'Papua', status: 'active' },
+  { code: 'AMBO', name: 'Ambon', network: 'IRIS', lat: -3.67, lng: 128.17, elevation: 35, region: 'Maluku', status: 'active' },
+  { code: 'BAND', name: 'Bandung', network: 'IRIS', lat: -6.91, lng: 107.61, elevation: 715, region: 'Jawa Barat', status: 'active' },
+  { code: 'BKR', name: 'Bukittinggi', network: 'IRIS', lat: -0.30, lng: 100.37, elevation: 930, region: 'Sumatra Barat', status: 'active' },
+  { code: 'UGM', name: 'Yogyakarta', network: 'IRIS', lat: -7.77, lng: 110.38, elevation: 120, region: 'DIY', status: 'active' },
+  
+  // USGS ANSS Stations - Indonesia
+  { code: 'ID.JAG', name: 'Jagong', network: 'USGS', lat: 4.63, lng: 96.73, elevation: 1200, region: 'Aceh', status: 'active' },
+  { code: 'ID.BAND', name: 'Bandung', network: 'USGS', lat: -6.91, lng: 107.61, elevation: 715, region: 'Jawa Barat', status: 'active' },
+  { code: 'ID.BKR', name: 'Bukittinggi', network: 'USGS', lat: -0.30, lng: 100.37, elevation: 930, region: 'Sumatra Barat', status: 'active' },
+  { code: 'ID.UGM', name: 'Yogyakarta', network: 'USGS', lat: -7.77, lng: 110.38, elevation: 120, region: 'DIY', status: 'active' },
+  { code: 'ID.JAYP', name: 'Jayapura', network: 'USGS', lat: -2.54, lng: 140.71, elevation: 105, region: 'Papua', status: 'active' },
+  { code: 'ID.AMBO', name: 'Ambon', network: 'USGS', lat: -3.67, lng: 128.17, elevation: 35, region: 'Maluku', status: 'active' },
+  { code: 'ID.SWRT', name: 'Sorong', network: 'USGS', lat: -0.87, lng: 131.24, elevation: 22, region: 'Papua Barat', status: 'active' },
+  { code: 'ID.MANA', name: 'Manado', network: 'USGS', lat: 1.48, lng: 124.85, elevation: 85, region: 'Sulawesi Utara', status: 'active' },
+];
+
 // Sumber gempa di sekitar Maluku Utara
 const SAMPLE_QUAKES: Omit<QuakeEvent, 'id' | 'pWaveSpeed' | 'sWaveSpeed' | 'timestamp' | 'distance' | 'mmi'>[] = [
   { location: 'Selat Maluku', latitude: 1.50, longitude: 127.20, depth: 10, magnitude: 5.8 },
@@ -303,6 +366,138 @@ function MMIScale() {
       <p className="text-xs text-slate-500 mt-2">
         * Hanya MMI III ke atas yang memicu peringatan dini
       </p>
+    </div>
+  );
+}
+
+function StationViewer({ selectedLocation }: { selectedLocation: typeof USER_LOCATIONS[0] }) {
+  const [filterNetwork, setFilterNetwork] = useState<'all' | 'BMKG' | 'Geofon' | 'IRIS' | 'USGS'>('all');
+  const [filterRegion, setFilterRegion] = useState('all');
+
+  const regions = Array.from(new Set(SEISMIC_STATIONS.map(s => s.region))).sort();
+  
+  const filteredStations = SEISMIC_STATIONS.filter(s => {
+    if (filterNetwork !== 'all' && s.network !== filterNetwork) return false;
+    if (filterRegion !== 'all' && s.region !== filterRegion) return false;
+    return true;
+  });
+
+  const networkColors: Record<string, string> = {
+    'BMKG': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    'Geofon': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+    'IRIS': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    'USGS': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  };
+
+  const networkInfo: Record<string, { desc: string; color: string }> = {
+    'BMKG': { desc: 'Badan Meteorologi, Klimatologi, dan Geofisika', color: 'text-emerald-400' },
+    'Geofon': { desc: 'GFZ German Research Centre for Geosciences', color: 'text-cyan-400' },
+    'IRIS': { desc: 'Incorporated Research Institutions for Seismology (GSN)', color: 'text-purple-400' },
+    'USGS': { desc: 'US Geological Survey - ANSS', color: 'text-blue-400' },
+  };
+
+  return (
+    <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 className="font-semibold text-white flex items-center gap-2">
+          <span>📡</span> Jaringan Stasiun Seismik di Indonesia
+        </h3>
+        <span className="text-xs text-slate-500">
+          {filteredStations.length} dari {SEISMIC_STATIONS.length} stasiun
+        </span>
+      </div>
+
+      {/* Network Info */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+        {Object.entries(networkInfo).map(([net, info]) => {
+          const count = SEISMIC_STATIONS.filter(s => s.network === net).length;
+          return (
+            <div key={net} className="bg-slate-900/40 rounded-lg p-2.5 border border-slate-700/30">
+              <div className={`text-sm font-bold ${info.color}`}>{net}</div>
+              <div className="text-xs text-slate-500">{info.desc}</div>
+              <div className="text-xs text-slate-400 mt-1">{count} stasiun</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select
+          value={filterNetwork}
+          onChange={(e) => setFilterNetwork(e.target.value as typeof filterNetwork)}
+          className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        >
+          <option value="all">Semua Jaringan</option>
+          <option value="BMKG">BMKG</option>
+          <option value="Geofon">Geofon</option>
+          <option value="IRIS">IRIS</option>
+          <option value="USGS">USGS</option>
+        </select>
+        <select
+          value={filterRegion}
+          onChange={(e) => setFilterRegion(e.target.value)}
+          className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        >
+          <option value="all">Semua Wilayah</option>
+          {regions.map(r => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Station Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-700/50 bg-slate-900/30">
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Kode</th>
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Nama</th>
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Jaringan</th>
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Wilayah</th>
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Koordinat</th>
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Elevasi</th>
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Jarak</th>
+              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredStations.map((station) => {
+              const dist = haversineDistance(station.lat, station.lng, selectedLocation.lat, selectedLocation.lng);
+              return (
+                <tr key={`${station.network}-${station.code}`} className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
+                  <td className="px-3 py-2">
+                    <code className="text-xs font-mono text-cyan-400 bg-slate-900/50 px-1.5 py-0.5 rounded">
+                      {station.code}
+                    </code>
+                  </td>
+                  <td className="px-3 py-2 text-white text-xs">{station.name}</td>
+                  <td className="px-3 py-2">
+                    <span className={`text-xs px-2 py-0.5 rounded border ${networkColors[station.network]}`}>
+                      {station.network}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-slate-400 text-xs">{station.region}</td>
+                  <td className="px-3 py-2 text-slate-400 text-xs font-mono">
+                    {station.lat.toFixed(2)}°, {station.lng.toFixed(2)}°
+                  </td>
+                  <td className="px-3 py-2 text-slate-400 text-xs font-mono">{station.elevation} m</td>
+                  <td className="px-3 py-2 text-emerald-400 text-xs font-mono">{Math.round(dist)} km</td>
+                  <td className="px-3 py-2">
+                    <span className={`w-2 h-2 rounded-full inline-block ${station.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {filteredStations.length === 0 && (
+        <div className="text-center py-8 text-slate-500 text-sm">
+          Tidak ada stasiun yang cocok dengan filter.
+        </div>
+      )}
     </div>
   );
 }
@@ -779,6 +974,9 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Station Viewer */}
+          <StationViewer selectedLocation={selectedLocation} />
         </main>
       </ShakeEffect>
 
