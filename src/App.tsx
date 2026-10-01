@@ -1,609 +1,632 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-// FDSN Data Centers
-const DATA_CENTERS = [
-  { name: 'IRIS', url: 'https://service.iris.edu', description: 'Incorporated Research Institutions for Seismology' },
-  { name: 'ORFEUS', url: 'https://www.orfeus-eu.org', description: 'Observatories & Research Facilities for European Seismology' },
-  { name: 'GFZ', url: 'https://geofon.gfz-potsdam.de', description: 'German Research Centre for Geosciences' },
-  { name: 'RESIF', url: 'https://ws.resif.fr', description: 'Réseau Sismologique Français' },
-  { name: 'INGV', url: 'https://webservices.ingv.it', description: 'Istituto Nazionale di Geofisica e Vulcanologia' },
-  { name: 'ETHZ', url: 'https://eida.ethz.ch', description: 'ETH Zürich' },
-  { name: 'BGR', url: 'https://eida.bgr.de', description: 'Federal Institute for Geosciences and Natural Resources' },
-  { name: 'NCEDC', url: 'https://service.ncedc.org', description: 'Northern California Earthquake Data Center' },
-  { name: 'SCEDC', url: 'https://service.scedc.caltech.edu', description: 'Southern California Earthquake Data Center' },
-  { name: 'USP', url: 'https://seisrequest.iag.usp.br', description: 'Universidade de São Paulo' },
-];
-
-// Available FDSN services
-const FDSN_SERVICES = [
-  { name: 'station', path: '/fdsnws/station/1', description: 'Station metadata (networks, stations, channels, responses)' },
-  { name: 'dataselect', path: '/fdsnws/dataselect/1', description: 'Time series data in miniSEED format' },
-  { name: 'dataselect (v2)', path: '/fdsnws/dataselect/2', description: 'Time series data (version 2)' },
-  { name: 'event', path: '/fdsnws/event/1', description: 'Event parameters (earthquakes) in QuakeML' },
-];
-
-interface VersionResponse {
-  dataCenter: string;
-  service: string;
-  version: string | null;
-  error: string | null;
-  loading: boolean;
-}
-
-interface StationInfo {
-  network: string;
-  station: string;
+// ===================== TYPES =====================
+interface QuakeEvent {
+  id: string;
+  location: string;
   latitude: number;
   longitude: number;
-  elevation: number;
-  siteName: string;
-  startTime: string;
-  endTime: string;
+  depth: number; // km
+  magnitude: number;
+  distance: number; // km from sensor
+  pWaveSpeed: number; // km/s
+  sWaveSpeed: number; // km/s
+  timestamp: number;
 }
 
-export default function App() {
-  const [selectedDC, setSelectedDC] = useState(DATA_CENTERS[0]);
-  const [versions, setVersions] = useState<Record<string, VersionResponse>>({});
-  const [activeTab, setActiveTab] = useState<'versions' | 'explorer' | 'about'>('versions');
-  const [queryNetwork, setQueryNetwork] = useState('*');
-  const [queryStation, setQueryStation] = useState('*');
-  const [queryLevel, setQueryLevel] = useState('station');
-  const [stations, setStations] = useState<StationInfo[]>([]);
-  const [stationsLoading, setStationsLoading] = useState(false);
-  const [stationsError, setStationsError] = useState<string | null>(null);
-  const [customUrl, setCustomUrl] = useState('');
+type AlertLevel = 'none' | 'watch' | 'advisory' | 'warning' | 'critical';
 
-  const fetchVersion = useCallback(async (dc: typeof DATA_CENTERS[0], service: string) => {
-    const key = `${dc.name}-${service}`;
-    setVersions(prev => ({ ...prev, [key]: { dataCenter: dc.name, service, version: null, error: null, loading: true } }));
-    
-    try {
-      const url = `${dc.url}${service}/version`;
-      const response = await fetch(url);
-      if (response.ok) {
-        const text = await response.text();
-        setVersions(prev => ({ ...prev, [key]: { dataCenter: dc.name, service, version: text.trim(), error: null, loading: false } }));
-      } else {
-        setVersions(prev => ({ ...prev, [key]: { dataCenter: dc.name, service, version: null, error: `HTTP ${response.status}`, loading: false } }));
-      }
-    } catch (err) {
-      setVersions(prev => ({ ...prev, [key]: { dataCenter: dc.name, service, version: null, error: 'Network error or CORS blocked', loading: false } }));
-    }
-  }, []);
+// ===================== CONSTANTS =====================
+const P_WAVE_SPEED = 6.0; // km/s
+const S_WAVE_SPEED = 3.5; // km/s
 
-  const fetchAllVersions = useCallback(() => {
-    FDSN_SERVICES.forEach(service => {
-      fetchVersion(selectedDC, service.path);
-    });
-  }, [selectedDC, fetchVersion]);
+const SAMPLE_QUAKES: Omit<QuakeEvent, 'id' | 'pWaveSpeed' | 'sWaveSpeed' | 'timestamp'>[] = [
+  { location: 'Palu, Sulawesi Tengah', latitude: -0.89, longitude: 119.85, depth: 10, magnitude: 5.2, distance: 80 },
+  { location: 'Yogyakarta, DIY', latitude: -7.79, longitude: 110.37, depth: 15, magnitude: 4.1, distance: 45 },
+  { location: 'Padang, Sumatra Barat', latitude: -0.95, longitude: 100.35, depth: 20, magnitude: 6.0, distance: 120 },
+  { location: 'Jayapura, Papua', latitude: -2.53, longitude: 140.72, depth: 25, magnitude: 5.8, distance: 95 },
+  { location: 'Mataram, NTB', latitude: -8.58, longitude: 116.12, depth: 12, magnitude: 4.7, distance: 60 },
+  { location: 'Manado, Sulawesi Utara', latitude: 1.49, longitude: 124.84, depth: 30, magnitude: 5.5, distance: 110 },
+  { location: 'Banda Aceh', latitude: 5.54, longitude: 95.32, depth: 18, magnitude: 6.5, distance: 150 },
+  { location: 'Jakarta Selatan', latitude: -6.26, longitude: 106.81, depth: 8, magnitude: 3.5, distance: 30 },
+  { location: 'Bengkulu', latitude: -3.80, longitude: 102.26, depth: 22, magnitude: 5.9, distance: 130 },
+  { location: 'Ambon, Maluku', latitude: -3.66, longitude: 128.18, depth: 14, magnitude: 5.0, distance: 70 },
+];
 
-  useEffect(() => {
-    fetchAllVersions();
-  }, [fetchAllVersions]);
+function getAlertLevel(mag: number, dist: number): AlertLevel {
+  const intensity = mag - Math.log10(dist) * 1.5;
+  if (intensity > 4) return 'critical';
+  if (intensity > 3) return 'warning';
+  if (intensity > 2) return 'advisory';
+  if (intensity > 1) return 'watch';
+  return 'none';
+}
 
-  const fetchStations = async () => {
-    setStationsLoading(true);
-    setStationsError(null);
-    setStations([]);
-    
-    try {
-      const params = new URLSearchParams({
-        network: queryNetwork,
-        station: queryStation,
-        level: queryLevel,
-        format: 'text',
-      });
-      
-      const url = `${selectedDC.url}/fdsnws/station/1/query?${params.toString()}`;
-      const response = await fetch(url);
-      
-      if (response.ok) {
-        const text = await response.text();
-        const lines = text.trim().split('\n');
-        
-        if (lines.length > 1) {
-          const parsed: StationInfo[] = lines.slice(1).slice(0, 50).map(line => {
-            const cols = line.split('|');
-            return {
-              network: cols[0] || '',
-              station: cols[1] || '',
-              latitude: parseFloat(cols[2]) || 0,
-              longitude: parseFloat(cols[3]) || 0,
-              elevation: parseFloat(cols[4]) || 0,
-              siteName: cols[5] || '',
-              startTime: cols[6] || '',
-              endTime: cols[7] || '',
-            };
-          });
-          setStations(parsed);
-        } else {
-          setStationsError('No stations found matching your query.');
-        }
-      } else {
-        setStationsError(`HTTP ${response.status}: ${response.statusText}`);
-      }
-    } catch (err) {
-      setStationsError('Network error or CORS blocked. Try using a different data center.');
-    }
-    
-    setStationsLoading(false);
-  };
+function getAlertInfo(level: AlertLevel) {
+  switch (level) {
+    case 'critical': return { label: 'KRITIS', color: 'red', bg: 'bg-red-600', text: 'text-red-400', border: 'border-red-500', desc: 'Guncangan sangat keras! Lindungi kepala segera!' };
+    case 'warning': return { label: 'BAHAYA', color: 'orange', bg: 'bg-orange-600', text: 'text-orange-400', border: 'border-orange-500', desc: 'Guncangan keras diperkirakan akan tiba.' };
+    case 'advisory': return { label: 'WASPADA', color: 'yellow', bg: 'bg-yellow-600', text: 'text-yellow-400', border: 'border-yellow-500', desc: 'Guncangan sedang, bersiaplah.' };
+    case 'watch': return { label: 'PERHATIAN', color: 'blue', bg: 'bg-blue-600', text: 'text-blue-400', border: 'border-blue-500', desc: 'Guncangan ringan mungkin terasa.' };
+    default: return { label: 'AMAN', color: 'green', bg: 'bg-emerald-600', text: 'text-emerald-400', border: 'border-emerald-500', desc: 'Tidak ada ancaman guncangan.' };
+  }
+}
 
-  const fetchCustomUrl = async () => {
-    if (!customUrl) return;
-    const key = `custom-${Date.now()}`;
-    setVersions(prev => ({ ...prev, [key]: { dataCenter: 'Custom', service: customUrl, version: null, error: null, loading: true } }));
-    
-    try {
-      const response = await fetch(customUrl);
-      if (response.ok) {
-        const text = await response.text();
-        setVersions(prev => ({ ...prev, [key]: { dataCenter: 'Custom', service: customUrl, version: text.trim(), error: null, loading: false } }));
-      } else {
-        setVersions(prev => ({ ...prev, [key]: { dataCenter: 'Custom', service: customUrl, version: null, error: `HTTP ${response.status}`, loading: false } }));
-      }
-    } catch (err) {
-      setVersions(prev => ({ ...prev, [key]: { dataCenter: 'Custom', service: customUrl, version: null, error: 'Network error or CORS blocked', loading: false } }));
-    }
-  };
+function formatTime(seconds: number): string {
+  if (seconds <= 0) return '00:00.0';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toFixed(1).padStart(4, '0')}`;
+}
+
+// ===================== COMPONENTS =====================
+
+function SeismicWaveAnimation({ progress, active }: { progress: number; active: boolean }) {
+  return (
+    <div className="relative w-full h-48 overflow-hidden rounded-xl bg-slate-900/80 border border-slate-700/50">
+      {/* Grid lines */}
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 800 200" preserveAspectRatio="none">
+        {/* Grid */}
+        {Array.from({ length: 20 }).map((_, i) => (
+          <line key={`v${i}`} x1={i * 40} y1="0" x2={i * 40} y2="200" stroke="#1e293b" strokeWidth="0.5" />
+        ))}
+        {Array.from({ length: 5 }).map((_, i) => (
+          <line key={`h${i}`} x1="0" y1={i * 50} x2="800" y2={i * 50} stroke="#1e293b" strokeWidth="0.5" />
+        ))}
+        <line x1="0" y1="100" x2="800" y2="100" stroke="#334155" strokeWidth="1" />
+
+        {/* P-Wave */}
+        {active && (
+          <path
+            d={generateWavePath(progress, 'p')}
+            fill="none"
+            stroke="#22d3ee"
+            strokeWidth="2.5"
+            opacity="0.9"
+          />
+        )}
+
+        {/* S-Wave */}
+        {active && (
+          <path
+            d={generateWavePath(progress, 's')}
+            fill="none"
+            stroke="#f97316"
+            strokeWidth="2.5"
+            opacity="0.9"
+          />
+        )}
+
+        {/* Sensor position marker */}
+        <circle cx="700" cy="100" r="6" fill="#10b981" stroke="#064e3b" strokeWidth="2" />
+        <text x="700" y="130" textAnchor="middle" fill="#10b981" fontSize="11" fontWeight="bold">SENSOR</text>
+
+        {/* Epicenter */}
+        <circle cx="50" cy="100" r="6" fill="#ef4444" stroke="#7f1d1d" strokeWidth="2" />
+        <text x="50" y="80" textAnchor="middle" fill="#ef4444" fontSize="11" fontWeight="bold">EPICENTER</text>
+      </svg>
+
+      {/* Legend */}
+      <div className="absolute top-2 right-2 flex gap-3 text-xs">
+        <span className="flex items-center gap-1">
+          <span className="w-4 h-0.5 bg-cyan-400 inline-block"></span>
+          <span className="text-cyan-400">Gelombang P</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-4 h-0.5 bg-orange-400 inline-block"></span>
+          <span className="text-orange-400">Gelombang S</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function generateWavePath(progress: number, type: 'p' | 's'): string {
+  const points: string[] = [];
+  const startX = 50;
+  const endX = 700;
+  const waveFrontX = startX + (endX - startX) * progress;
+
+  for (let x = startX; x <= Math.min(waveFrontX, endX); x += 2) {
+    const distFromFront = waveFrontX - x;
+    const freq = type === 'p' ? 0.08 : 0.04;
+    const amp = type === 'p' ? 20 : 40;
+    const decay = Math.exp(-distFromFront * 0.005);
+    const y = 100 + Math.sin(distFromFront * freq) * amp * decay;
+    points.push(`${x},${y}`);
+  }
+
+  return points.length > 1 ? `M ${points.join(' L ')}` : '';
+}
+
+function CountdownDisplay({ seconds, total }: { seconds: number; total: number }) {
+  const pct = total > 0 ? Math.max(0, Math.min(100, (seconds / total) * 100)) : 0;
+  const radius = 90;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (pct / 100) * circumference;
+  const isUrgent = seconds < 5;
+  const isCritical = seconds <= 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+    <div className="relative flex items-center justify-center">
+      <svg width="240" height="240" className="transform -rotate-90">
+        {/* Background circle */}
+        <circle cx="120" cy="120" r={radius} fill="none" stroke="#1e293b" strokeWidth="8" />
+        {/* Progress circle */}
+        <circle
+          cx="120" cy="120" r={radius}
+          fill="none"
+          stroke={isCritical ? '#ef4444' : isUrgent ? '#f97316' : '#22d3ee'}
+          strokeWidth="8"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-200"
+        />
+        {/* Glow effect */}
+        {isUrgent && (
+          <circle
+            cx="120" cy="120" r={radius}
+            fill="none"
+            stroke={isCritical ? '#ef4444' : '#f97316'}
+            strokeWidth="12"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            opacity="0.2"
+            className="animate-pulse"
+          />
+        )}
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-xs text-slate-400 uppercase tracking-wider mb-1">
+          {isCritical ? 'GUNCANGAN TIBA' : 'Sebelum Guncangan'}
+        </span>
+        <span className={`text-4xl font-mono font-bold ${isCritical ? 'text-red-400 animate-pulse' : isUrgent ? 'text-orange-400' : 'text-cyan-400'}`}>
+          {formatTime(Math.max(0, seconds))}
+        </span>
+        <span className="text-xs text-slate-500 mt-1">
+          {isCritical ? 'detik' : `dari ${formatTime(total)}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ShakeEffect({ active, children }: { active: boolean; children: React.ReactNode }) {
+  if (!active) return <>{children}</>;
+  return (
+    <div className="animate-shake">
+      {children}
+    </div>
+  );
+}
+
+function SafetyGuide() {
+  const steps = [
+    { icon: '🛡️', title: 'DROP / Merunduk', desc: 'Merunduk ke bawah, lindungi kepala dan leher' },
+    { icon: '🤲', title: 'COVER / Berlindung', desc: 'Berlindung di bawah meja kokoh atau struktur kuat' },
+    { icon: '✊', title: 'HOLD ON / Pegangan', desc: 'Pegang kuat benda pelindung sampai guncangan berhenti' },
+  ];
+
+  return (
+    <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+      <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+        <span className="text-xl">🚨</span> Panduan Keselamatan Saat Gempa
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {steps.map((step, i) => (
+          <div key={i} className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30 text-center">
+            <div className="text-3xl mb-2">{step.icon}</div>
+            <h4 className="font-semibold text-white text-sm mb-1">{step.title}</h4>
+            <p className="text-xs text-slate-400">{step.desc}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 p-3 bg-red-900/20 border border-red-700/30 rounded-lg">
+        <p className="text-xs text-red-300">
+          <strong>⚠️ PENTING:</strong> Setelah guncangan berhenti, segera evakuasi ke tempat terbuka. 
+          Jauhi gedung, pohon, dan kabel listrik. Waspadai gempa susulan.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function InfoCard({ label, value, unit, color = 'text-white' }: { label: string; value: string | number; unit?: string; color?: string }) {
+  return (
+    <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+      <div className="text-xs text-slate-500 uppercase tracking-wider">{label}</div>
+      <div className={`text-lg font-bold font-mono ${color} mt-0.5`}>
+        {value}
+        {unit && <span className="text-xs text-slate-400 ml-1">{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ===================== MAIN APP =====================
+export default function App() {
+  const [quake, setQuake] = useState<QuakeEvent | null>(null);
+  const [countdown, setCountdown] = useState(0);
+  const [totalTime, setTotalTime] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
+  const [waveProgress, setWaveProgress] = useState(0);
+  const [pWaveArrived, setPWaveArrived] = useState(false);
+  const [alertLevel, setAlertLevel] = useState<AlertLevel>('none');
+  const [history, setHistory] = useState<QuakeEvent[]>([]);
+  const [showGuide, setShowGuide] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
+
+  const triggerQuake = useCallback((selectedQuake?: typeof SAMPLE_QUAKES[number]) => {
+    const q = selectedQuake || SAMPLE_QUAKES[Math.floor(Math.random() * SAMPLE_QUAKES.length)];
+    const event: QuakeEvent = {
+      ...q,
+      id: `eq-${Date.now()}`,
+      pWaveSpeed: P_WAVE_SPEED,
+      sWaveSpeed: S_WAVE_SPEED,
+      timestamp: Date.now(),
+    };
+
+    const pWaveTime = q.distance / P_WAVE_SPEED;
+    const sWaveTime = q.distance / S_WAVE_SPEED;
+    const warningTime = sWaveTime - pWaveTime;
+
+    setQuake(event);
+    setTotalTime(warningTime);
+    setCountdown(warningTime);
+    setIsRunning(true);
+    setIsShaking(false);
+    setWaveProgress(0);
+    setPWaveArrived(false);
+    setAlertLevel(getAlertLevel(q.magnitude, q.distance));
+    startTimeRef.current = Date.now();
+
+    setHistory(prev => [event, ...prev].slice(0, 10));
+  }, []);
+
+  useEffect(() => {
+    if (!isRunning || !quake) return;
+
+    const pWaveTime = quake.distance / P_WAVE_SPEED;
+    const sWaveTime = quake.distance / S_WAVE_SPEED;
+    const warningTime = sWaveTime - pWaveTime;
+
+    intervalRef.current = setInterval(() => {
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      const remaining = Math.max(0, warningTime - elapsed);
+      const progress = Math.min(1, elapsed / warningTime);
+
+      setCountdown(remaining);
+      setWaveProgress(progress);
+
+      if (elapsed >= pWaveTime * 0.3 && !pWaveArrived) {
+        setPWaveArrived(true);
+      }
+
+      if (remaining <= 0) {
+        setIsRunning(false);
+        setIsShaking(true);
+        setCountdown(0);
+        setWaveProgress(1);
+        setTimeout(() => setIsShaking(false), 3000);
+      }
+    }, 50);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isRunning, quake, pWaveArrived]);
+
+  const alertInfo = getAlertInfo(alertLevel);
+  const pWaveTime = quake ? quake.distance / P_WAVE_SPEED : 0;
+  const sWaveTime = quake ? quake.distance / S_WAVE_SPEED : 0;
+  const warningTime = quake ? sWaveTime - pWaveTime : 0;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+      {/* Shake animation CSS */}
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10% { transform: translateX(-8px) rotate(-0.5deg); }
+          20% { transform: translateX(8px) rotate(0.5deg); }
+          30% { transform: translateX(-6px) rotate(-0.3deg); }
+          40% { transform: translateX(6px) rotate(0.3deg); }
+          50% { transform: translateX(-4px); }
+          60% { transform: translateX(4px); }
+          70% { transform: translateX(-2px); }
+          80% { transform: translateX(2px); }
+          90% { transform: translateX(-1px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s ease-in-out infinite;
+        }
+        @keyframes pulse-ring {
+          0% { transform: scale(0.8); opacity: 1; }
+          100% { transform: scale(2); opacity: 0; }
+        }
+        .animate-pulse-ring {
+          animation: pulse-ring 1.5s ease-out infinite;
+        }
+        @keyframes siren {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        .animate-siren {
+          animation: siren 0.5s ease-in-out infinite;
+        }
+      `}</style>
+
       {/* Header */}
-      <header className="border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <header className="border-b border-slate-700/50 bg-slate-900/90 backdrop-blur-sm sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isRunning ? 'bg-red-600 animate-siren' : 'bg-gradient-to-br from-emerald-400 to-cyan-500'}`}>
+                <span className="text-xl">🌏</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">FDSN Web Services Explorer</h1>
-                <p className="text-xs text-slate-400">Federation of Digital Seismograph Networks</p>
+                <h1 className="text-lg font-bold text-white leading-tight">Earthquake Early Warning</h1>
+                <p className="text-xs text-slate-400">Sistem Peringatan Dini Gempa Bumi</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-medium">
-                v1.x
-              </span>
+              {isRunning && (
+                <span className="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-bold animate-siren">
+                  ⚠️ AKTIF
+                </span>
+              )}
+              <button
+                onClick={() => setShowGuide(!showGuide)}
+                className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-slate-300 transition-colors"
+              >
+                🚨 Panduan
+              </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-4 pt-6">
-        <div className="flex gap-1 bg-slate-800/50 p-1 rounded-lg w-fit">
-          {[
-            { id: 'versions' as const, label: 'Version Check', icon: '🔍' },
-            { id: 'explorer' as const, label: 'Station Explorer', icon: '📡' },
-            { id: 'about' as const, label: 'About FDSN', icon: 'ℹ️' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                activeTab === tab.id
-                  ? 'bg-slate-700 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-              }`}
-            >
-              <span className="mr-2">{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        {/* Data Center Selector */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Data Center
-          </label>
-          <select
-            value={selectedDC.name}
-            onChange={(e) => {
-              const dc = DATA_CENTERS.find(d => d.name === e.target.value);
-              if (dc) setSelectedDC(dc);
-            }}
-            className="w-full max-w-md bg-slate-800 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-          >
-            {DATA_CENTERS.map(dc => (
-              <option key={dc.name} value={dc.name}>
-                {dc.name} — {dc.description}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-slate-500">
-            Base URL: <code className="text-emerald-400">{selectedDC.url}</code>
-          </p>
-        </div>
-
-        {/* Version Check Tab */}
-        {activeTab === 'versions' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Service Versions</h2>
-              <button
-                onClick={fetchAllVersions}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refresh All
-              </button>
+      <ShakeEffect active={isShaking}>
+        <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+          {/* Alert Banner */}
+          {isRunning && (
+            <div className={`${alertInfo.bg} rounded-xl p-4 border ${alertInfo.border} shadow-lg`}>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                    <span className="text-2xl animate-siren">⚠️</span>
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-white/10 animate-pulse-ring"></div>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-lg">{alertInfo.label}</span>
+                    <span className="px-2 py-0.5 bg-white/20 rounded text-xs text-white font-mono">
+                      M{quake?.magnitude.toFixed(1)}
+                    </span>
+                  </div>
+                  <p className="text-white/80 text-sm">{alertInfo.desc}</p>
+                  <p className="text-white/60 text-xs mt-0.5">
+                    📍 {quake?.location} — Kedalaman {quake?.depth} km — Jarak {quake?.distance} km
+                  </p>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {FDSN_SERVICES.map(service => {
-                const key = `${selectedDC.name}-${service.path}`;
-                const result = versions[key];
-                return (
-                  <div
-                    key={service.name}
-                    className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5 hover:border-slate-600 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold text-white">{service.name}</h3>
-                        <p className="text-xs text-slate-400 mt-0.5">{service.description}</p>
-                      </div>
-                      <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-700 text-slate-300">
-                        {service.path}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Panel - Countdown */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Countdown Circle */}
+              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-6">
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  <CountdownDisplay seconds={countdown} total={totalTime} />
+                  
+                  <div className="flex-1 space-y-3 w-full">
+                    {/* Status */}
+                    <div className="flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full ${isRunning ? 'bg-red-400 animate-pulse' : pWaveArrived ? 'bg-cyan-400' : 'bg-slate-600'}`}></span>
+                      <span className="text-sm text-slate-300">
+                        {!quake ? 'Menunggu deteksi...' :
+                          isRunning ? (pWaveArrived ? 'Gelombang P terdeteksi!' : 'Menunggu gelombang P...') :
+                          isShaking ? '💥 GUNCANGAN TIBA!' : 'Siaga'}
                       </span>
                     </div>
-                    
-                    <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700/30">
-                      <code className="text-xs text-slate-500 break-all">
-                        GET {selectedDC.url}{service.path}/version
-                      </code>
-                    </div>
 
-                    <div className="mt-3 flex items-center gap-2">
-                      {result?.loading ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="text-sm text-slate-400">Checking...</span>
+                    {/* Wave info */}
+                    {quake && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-cyan-900/20 border border-cyan-700/30 rounded-lg p-2.5">
+                          <div className="text-xs text-cyan-400">Gelombang P</div>
+                          <div className="text-sm font-mono text-cyan-300">{pWaveTime.toFixed(1)}s</div>
+                          <div className="text-xs text-slate-500">{P_WAVE_SPEED} km/s</div>
                         </div>
-                      ) : result?.error ? (
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-red-400"></span>
-                          <span className="text-sm text-red-400">{result.error}</span>
+                        <div className="bg-orange-900/20 border border-orange-700/30 rounded-lg p-2.5">
+                          <div className="text-xs text-orange-400">Gelombang S</div>
+                          <div className="text-sm font-mono text-orange-300">{sWaveTime.toFixed(1)}s</div>
+                          <div className="text-xs text-slate-500">{S_WAVE_SPEED} km/s</div>
                         </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                          <span className="text-sm text-emerald-400 font-mono font-bold">{result?.version || 'No response'}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      </div>
+                    )}
 
-            {/* Custom URL Query */}
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
-              <h3 className="font-semibold text-white mb-3">Custom Endpoint Query</h3>
-              <p className="text-sm text-slate-400 mb-3">
-                Enter any FDSN version endpoint URL to check its response.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={customUrl}
-                  onChange={(e) => setCustomUrl(e.target.value)}
-                  placeholder="https://service.iris.edu/fdsnws/station/1/version"
-                  className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                />
-                <button
-                  onClick={fetchCustomUrl}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  Query
-                </button>
-              </div>
-              
-              {/* Show custom results */}
-              {Object.entries(versions)
-                .filter(([key]) => key.startsWith('custom-'))
-                .slice(-3)
-                .reverse()
-                .map(([key, result]) => (
-                  <div key={key} className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700/30">
-                    <code className="text-xs text-slate-500 break-all block mb-1">{result.service}</code>
-                    {result.loading ? (
-                      <span className="text-sm text-slate-400">Loading...</span>
-                    ) : result.error ? (
-                      <span className="text-sm text-red-400">Error: {result.error}</span>
-                    ) : (
-                      <span className="text-sm text-emerald-400 font-mono">{result.version}</span>
+                    {/* Quick Info */}
+                    {quake && (
+                      <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+                        <div className="text-xs text-slate-500 mb-1">Waktu Peringatan</div>
+                        <div className="text-xl font-bold font-mono text-emerald-400">
+                          {warningTime.toFixed(1)} <span className="text-xs text-slate-400">detik</span>
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Selisih kedatangan P dan S wave
+                        </div>
+                      </div>
                     )}
                   </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {/* Station Explorer Tab */}
-        {activeTab === 'explorer' && (
-          <div className="space-y-6">
-            <h2 className="text-lg font-semibold text-white">Station Query Builder</h2>
-            
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Network Code</label>
-                  <input
-                    type="text"
-                    value={queryNetwork}
-                    onChange={(e) => setQueryNetwork(e.target.value)}
-                    placeholder="e.g., IU, US, *"
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Station Code</label>
-                  <input
-                    type="text"
-                    value={queryStation}
-                    onChange={(e) => setQueryStation(e.target.value)}
-                    placeholder="e.g., ANMO, *"
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Level</label>
-                  <select
-                    value={queryLevel}
-                    onChange={(e) => setQueryLevel(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="network">Network</option>
-                    <option value="station">Station</option>
-                    <option value="channel">Channel</option>
-                    <option value="response">Response</option>
-                  </select>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              {/* Seismic Wave Visualization */}
+              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                  <span>📈</span> Visualisasi Gelombang Seismik
+                </h3>
+                <SeismicWaveAnimation progress={waveProgress} active={isRunning || isShaking} />
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="bg-slate-900/40 rounded p-2">
+                    <div className="text-slate-500">Jarak Episenter</div>
+                    <div className="text-white font-mono font-bold">{quake?.distance || '—'} km</div>
+                  </div>
+                  <div className="bg-slate-900/40 rounded p-2">
+                    <div className="text-slate-500">Kedalaman</div>
+                    <div className="text-white font-mono font-bold">{quake?.depth || '—'} km</div>
+                  </div>
+                  <div className="bg-slate-900/40 rounded p-2">
+                    <div className="text-slate-500">Magnitudo</div>
+                    <div className="text-white font-mono font-bold">M{quake?.magnitude.toFixed(1) || '—'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Cards */}
+              {quake && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <InfoCard label="Lokasi" value={quake.location.split(',')[0]} color="text-white" />
+                  <InfoCard label="Magnitudo" value={`M${quake.magnitude.toFixed(1)}`} color={quake.magnitude >= 5 ? 'text-red-400' : 'text-yellow-400'} />
+                  <InfoCard label="Kedalaman" value={quake.depth} unit="km" color="text-cyan-400" />
+                  <InfoCard label="Jarak" value={quake.distance} unit="km" color="text-emerald-400" />
+                </div>
+              )}
+
+              {/* Safety Guide */}
+              {showGuide && <SafetyGuide />}
+            </div>
+
+            {/* Right Panel - Controls & History */}
+            <div className="space-y-6">
+              {/* Trigger Panel */}
+              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                  <span>🎮</span> Simulasi Gempa
+                </h3>
+                <p className="text-xs text-slate-400 mb-4">
+                  Pilih lokasi atau gunakan acak untuk mensimulasikan peringatan dini gempa bumi.
+                </p>
+                
                 <button
-                  onClick={fetchStations}
-                  disabled={stationsLoading}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                  onClick={() => triggerQuake()}
+                  disabled={isRunning}
+                  className="w-full py-3 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-bold rounded-lg transition-all mb-4 flex items-center justify-center gap-2"
                 >
-                  {stationsLoading ? (
+                  {isRunning ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Querying...
+                      Simulasi Berjalan...
                     </>
                   ) : (
                     <>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      Query Stations
+                      <span>🌋</span> Simulasi Gempa Acak
                     </>
                   )}
                 </button>
-                <code className="text-xs text-slate-500">
-                  {selectedDC.url}/fdsnws/station/1/query?network={queryNetwork}&station={queryStation}&level={queryLevel}&format=text
-                </code>
-              </div>
-            </div>
 
-            {/* Results */}
-            {stationsError && (
-              <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-4">
-                <p className="text-red-400 text-sm">{stationsError}</p>
-              </div>
-            )}
-
-            {stations.length > 0 && (
-              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-700/50 flex items-center justify-between">
-                  <h3 className="font-semibold text-white">Results ({stations.length} stations)</h3>
-                  <span className="text-xs text-slate-400">Showing up to 50 results</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-700/50 bg-slate-900/30">
-                        <th className="text-left px-4 py-3 text-slate-400 font-medium">Network</th>
-                        <th className="text-left px-4 py-3 text-slate-400 font-medium">Station</th>
-                        <th className="text-left px-4 py-3 text-slate-400 font-medium">Name</th>
-                        <th className="text-left px-4 py-3 text-slate-400 font-medium">Latitude</th>
-                        <th className="text-left px-4 py-3 text-slate-400 font-medium">Longitude</th>
-                        <th className="text-left px-4 py-3 text-slate-400 font-medium">Elevation</th>
-                        <th className="text-left px-4 py-3 text-slate-400 font-medium">Start Time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stations.map((station, idx) => (
-                        <tr key={idx} className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-                          <td className="px-4 py-2.5">
-                            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-xs font-mono">
-                              {station.network}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 font-mono text-cyan-400">{station.station}</td>
-                          <td className="px-4 py-2.5 text-slate-300">{station.siteName}</td>
-                          <td className="px-4 py-2.5 text-slate-300 font-mono">{station.latitude.toFixed(4)}</td>
-                          <td className="px-4 py-2.5 text-slate-300 font-mono">{station.longitude.toFixed(4)}</td>
-                          <td className="px-4 py-2.5 text-slate-300 font-mono">{station.elevation.toFixed(0)} m</td>
-                          <td className="px-4 py-2.5 text-slate-400 text-xs">{station.startTime?.split('T')[0] || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {SAMPLE_QUAKES.map((q, i) => (
+                    <button
+                      key={i}
+                      onClick={() => !isRunning && triggerQuake(q)}
+                      disabled={isRunning}
+                      className="w-full text-left p-2.5 bg-slate-900/50 hover:bg-slate-700/50 disabled:hover:bg-slate-900/50 rounded-lg border border-slate-700/30 transition-colors group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-white group-hover:text-cyan-400 transition-colors">
+                          📍 {q.location}
+                        </span>
+                        <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                          q.magnitude >= 6 ? 'bg-red-900/50 text-red-400' :
+                          q.magnitude >= 5 ? 'bg-orange-900/50 text-orange-400' :
+                          'bg-yellow-900/50 text-yellow-400'
+                        }`}>
+                          M{q.magnitude}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {q.distance} km • {q.depth} km depth
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* About Tab */}
-        {activeTab === 'about' && (
-          <div className="space-y-6">
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-6">
-              <h2 className="text-xl font-bold text-white mb-4">About FDSN Web Services</h2>
-              <div className="prose prose-invert max-w-none">
-                <p className="text-slate-300 leading-relaxed">
-                  The FDSN (Federation of Digital Seismograph Networks) Web Services define a set of 
-                  common web service interfaces for seismological data. These standards enable 
-                  interoperability between different data centers worldwide, allowing researchers 
-                  and applications to access seismic data from multiple sources using a uniform API.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* History */}
               <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
                 <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
-                  <span className="text-lg">📡</span> Station Service
+                  <span>📋</span> Riwayat Simulasi
                 </h3>
-                <p className="text-sm text-slate-400 mb-3">
-                  Provides access to station metadata including networks, stations, channels, 
-                  and instrument responses.
-                </p>
-                <code className="text-xs text-emerald-400 bg-slate-900/50 px-3 py-1.5 rounded block">
-                  /fdsnws/station/1/version
-                </code>
-                <code className="text-xs text-cyan-400 bg-slate-900/50 px-3 py-1.5 rounded block mt-1">
-                  /fdsnws/station/1/query
-                </code>
-              </div>
-
-              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
-                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
-                  <span className="text-lg">📊</span> Dataselect Service
-                </h3>
-                <p className="text-sm text-slate-400 mb-3">
-                  Provides time series waveform data in miniSEED format. Supports both 
-                  time-window and channel-based queries.
-                </p>
-                <code className="text-xs text-emerald-400 bg-slate-900/50 px-3 py-1.5 rounded block">
-                  /fdsnws/dataselect/1/version
-                </code>
-                <code className="text-xs text-cyan-400 bg-slate-900/50 px-3 py-1.5 rounded block mt-1">
-                  /fdsnws/dataselect/1/query
-                </code>
-              </div>
-
-              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
-                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
-                  <span className="text-lg">🌍</span> Event Service
-                </h3>
-                <p className="text-sm text-slate-400 mb-3">
-                  Provides earthquake event parameters in QuakeML format, including 
-                  origins, magnitudes, and focal mechanisms.
-                </p>
-                <code className="text-xs text-emerald-400 bg-slate-900/50 px-3 py-1.5 rounded block">
-                  /fdsnws/event/1/version
-                </code>
-                <code className="text-xs text-cyan-400 bg-slate-900/50 px-3 py-1.5 rounded block mt-1">
-                  /fdsnws/event/1/query
-                </code>
-              </div>
-
-              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
-                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
-                  <span className="text-lg">🔗</span> Common Parameters
-                </h3>
-                <p className="text-sm text-slate-400 mb-3">
-                  Standard query parameters shared across services for consistent API usage.
-                </p>
-                <ul className="text-xs text-slate-400 space-y-1">
-                  <li><code className="text-yellow-400">network</code> — Network code</li>
-                  <li><code className="text-yellow-400">station</code> — Station code</li>
-                  <li><code className="text-yellow-400">location</code> — Location identifier</li>
-                  <li><code className="text-yellow-400">channel</code> — Channel code</li>
-                  <li><code className="text-yellow-400">starttime</code> — Start time (ISO 8601)</li>
-                  <li><code className="text-yellow-400">endtime</code> — End time (ISO 8601)</li>
-                  <li><code className="text-yellow-400">format</code> — Output format</li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Data Centers List */}
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
-              <h3 className="font-semibold text-white mb-4">Participating Data Centers</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {DATA_CENTERS.map(dc => (
-                  <div key={dc.name} className="p-3 bg-slate-900/40 rounded-lg border border-slate-700/30">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                      <span className="font-medium text-white text-sm">{dc.name}</span>
-                    </div>
-                    <p className="text-xs text-slate-500">{dc.description}</p>
-                    <code className="text-xs text-slate-600 mt-1 block">{dc.url}</code>
+                {history.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">Belum ada simulasi</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {history.map((h, i) => {
+                      const level = getAlertLevel(h.magnitude, h.distance);
+                      const info = getAlertInfo(level);
+                      return (
+                        <div key={h.id} className="flex items-center gap-2 p-2 bg-slate-900/40 rounded-lg border border-slate-700/20">
+                          <span className={`w-2 h-2 rounded-full ${info.bg}`}></span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-white truncate">{h.location}</div>
+                            <div className="text-xs text-slate-500">
+                              M{h.magnitude} • {new Date(h.timestamp).toLocaleTimeString('id-ID')}
+                            </div>
+                          </div>
+                          <span className={`text-xs font-mono ${info.text}`}>{info.label}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
 
-            {/* Specification Info */}
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
-              <h3 className="font-semibold text-white mb-3">Endpoint Structure</h3>
-              <div className="bg-slate-900/50 rounded-lg p-4 font-mono text-sm">
-                <div className="text-slate-500">{'// FDSN Web Service URL Pattern'}</div>
-                <div className="mt-2">
-                  <span className="text-purple-400">{'{base_url}'}</span>
-                  <span className="text-slate-400">/fdsnws/</span>
-                  <span className="text-cyan-400">{'{service}'}</span>
-                  <span className="text-slate-400">/</span>
-                  <span className="text-yellow-400">{'{version}'}</span>
-                  <span className="text-slate-400">/</span>
-                  <span className="text-emerald-400">{'{method}'}</span>
-                </div>
-                <div className="mt-3 text-slate-500">{'// Example:'}</div>
-                <div>
-                  <span className="text-purple-400">https://service.iris.edu</span>
-                  <span className="text-slate-400">/fdsnws/</span>
-                  <span className="text-cyan-400">station</span>
-                  <span className="text-slate-400">/</span>
-                  <span className="text-yellow-400">1</span>
-                  <span className="text-slate-400">/</span>
-                  <span className="text-emerald-400">version</span>
+              {/* How it works */}
+              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                  <span>💡</span> Cara Kerja EEW
+                </h3>
+                <div className="space-y-3 text-xs text-slate-400">
+                  <div className="flex gap-2">
+                    <span className="w-5 h-5 rounded-full bg-cyan-900/50 text-cyan-400 flex items-center justify-center shrink-0 text-xs font-bold">1</span>
+                    <p>Gempa menghasilkan <strong className="text-cyan-400">Gelombang P</strong> (cepat, 6 km/s) yang terdeteksi sensor seismik pertama kali.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="w-5 h-5 rounded-full bg-orange-900/50 text-orange-400 flex items-center justify-center shrink-0 text-xs font-bold">2</span>
+                    <p>Sistem menghitung estimasi magnitudo, lokasi, dan waktu kedatangan <strong className="text-orange-400">Gelombang S</strong> (lambat, 3.5 km/s).</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-900/50 text-emerald-400 flex items-center justify-center shrink-0 text-xs font-bold">3</span>
+                    <p>Peringatan dikirim <strong className="text-emerald-400">sebelum guncangan tiba</strong>, memberi waktu untuk berlindung.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="w-5 h-5 rounded-full bg-red-900/50 text-red-400 flex items-center justify-center shrink-0 text-xs font-bold">!</span>
+                    <p>Semakin jauh dari episenter, semakin lama <strong className="text-red-400">waktu peringatan</strong> yang tersedia.</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        )}
-      </main>
+        </main>
+      </ShakeEffect>
 
       {/* Footer */}
-      <footer className="border-t border-slate-700/50 mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-slate-500">
-              FDSN Web Services Explorer — Querying seismological data centers worldwide
-            </p>
-            <div className="flex items-center gap-4">
-              <a
-                href="https://www.fdsn.org/webservices/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
-              >
-                FDSN Specification →
-              </a>
-              <a
-                href="http://www.fdsn.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-slate-400 hover:text-white transition-colors"
-              >
-                fdsn.org
-              </a>
-            </div>
-          </div>
+      <footer className="border-t border-slate-700/50 mt-8">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <p className="text-center text-xs text-slate-600">
+            ⚠️ SIMULASI — Aplikasi ini hanya untuk edukasi dan demonstrasi konsep Earthquake Early Warning (EEW).
+            Bukan sistem peringatan resmi. Untuk informasi gempa real-time, kunjungi{' '}
+            <a href="https://bmkg.go.id" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:text-emerald-400">BMKG</a>.
+          </p>
         </div>
       </footer>
     </div>
