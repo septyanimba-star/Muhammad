@@ -373,6 +373,7 @@ function MMIScale() {
 function StationViewer({ selectedLocation }: { selectedLocation: typeof USER_LOCATIONS[0] }) {
   const [filterNetwork, setFilterNetwork] = useState<'all' | 'BMKG' | 'Geofon' | 'IRIS' | 'USGS'>('all');
   const [filterRegion, setFilterRegion] = useState('all');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const regions = Array.from(new Set(SEISMIC_STATIONS.map(s => s.region))).sort();
   
@@ -389,11 +390,22 @@ function StationViewer({ selectedLocation }: { selectedLocation: typeof USER_LOC
     'USGS': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   };
 
-  const networkInfo: Record<string, { desc: string; color: string }> = {
-    'BMKG': { desc: 'Badan Meteorologi, Klimatologi, dan Geofisika', color: 'text-emerald-400' },
-    'Geofon': { desc: 'GFZ German Research Centre for Geosciences', color: 'text-cyan-400' },
-    'IRIS': { desc: 'Incorporated Research Institutions for Seismology (GSN)', color: 'text-purple-400' },
-    'USGS': { desc: 'US Geological Survey - ANSS', color: 'text-blue-400' },
+  const networkTabs: Record<string, { icon: string; color: string; desc: string }> = {
+    'all': { icon: '🌐', color: 'text-white', desc: 'Semua Jaringan' },
+    'BMKG': { icon: '🇮🇩', color: 'text-emerald-400', desc: 'Badan Meteorologi, Klimatologi, dan Geofisika' },
+    'Geofon': { icon: '🇩🇪', color: 'text-cyan-400', desc: 'GFZ German Research Centre for Geosciences' },
+    'IRIS': { icon: '🌍', color: 'text-purple-400', desc: 'Incorporated Research Institutions for Seismology' },
+    'USGS': { icon: '🇺🇸', color: 'text-blue-400', desc: 'US Geological Survey - ANSS' },
+  };
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const scrollAmount = 320;
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
   };
 
   return (
@@ -407,97 +419,159 @@ function StationViewer({ selectedLocation }: { selectedLocation: typeof USER_LOC
         </span>
       </div>
 
-      {/* Network Info */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-        {Object.entries(networkInfo).map(([net, info]) => {
-          const count = SEISMIC_STATIONS.filter(s => s.network === net).length;
+      {/* Network Tabs */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {Object.entries(networkTabs).map(([net, info]) => {
+          const count = net === 'all' ? SEISMIC_STATIONS.length : SEISMIC_STATIONS.filter(s => s.network === net).length;
+          const isActive = filterNetwork === net;
           return (
-            <div key={net} className="bg-slate-900/40 rounded-lg p-2.5 border border-slate-700/30">
-              <div className={`text-sm font-bold ${info.color}`}>{net}</div>
-              <div className="text-xs text-slate-500">{info.desc}</div>
-              <div className="text-xs text-slate-400 mt-1">{count} stasiun</div>
-            </div>
+            <button
+              key={net}
+              onClick={() => setFilterNetwork(net as typeof filterNetwork)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all whitespace-nowrap ${
+                isActive
+                  ? 'bg-slate-700 border-slate-500 shadow-lg'
+                  : 'bg-slate-900/50 border-slate-700/30 hover:border-slate-600'
+              }`}
+            >
+              <span className="text-lg">{info.icon}</span>
+              <div className="text-left">
+                <div className={`text-sm font-bold ${isActive ? 'text-white' : info.color}`}>{net === 'all' ? 'Semua' : net}</div>
+                <div className="text-xs text-slate-500">{count} stasiun</div>
+              </div>
+            </button>
           );
         })}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select
-          value={filterNetwork}
-          onChange={(e) => setFilterNetwork(e.target.value as typeof filterNetwork)}
-          className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        >
-          <option value="all">Semua Jaringan</option>
-          <option value="BMKG">BMKG</option>
-          <option value="Geofon">Geofon</option>
-          <option value="IRIS">IRIS</option>
-          <option value="USGS">USGS</option>
-        </select>
+      {/* Network Description */}
+      {filterNetwork !== 'all' && (
+        <div className="mb-4 p-3 bg-slate-900/40 rounded-lg border border-slate-700/30">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{networkTabs[filterNetwork].icon}</span>
+            <div>
+              <div className={`text-sm font-bold ${networkTabs[filterNetwork].color}`}>{filterNetwork}</div>
+              <div className="text-xs text-slate-400">{networkTabs[filterNetwork].desc}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Region Filter */}
+      <div className="mb-4">
         <select
           value={filterRegion}
           onChange={(e) => setFilterRegion(e.target.value)}
           className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
         >
-          <option value="all">Semua Wilayah</option>
+          <option value="all">📍 Semua Wilayah</option>
           {regions.map(r => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
       </div>
 
-      {/* Station Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-700/50 bg-slate-900/30">
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Kode</th>
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Nama</th>
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Jaringan</th>
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Wilayah</th>
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Koordinat</th>
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Elevasi</th>
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Jarak</th>
-              <th className="text-left px-3 py-2 text-slate-400 font-medium text-xs">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredStations.map((station) => {
-              const dist = haversineDistance(station.lat, station.lng, selectedLocation.lat, selectedLocation.lng);
-              return (
-                <tr key={`${station.network}-${station.code}`} className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-                  <td className="px-3 py-2">
-                    <code className="text-xs font-mono text-cyan-400 bg-slate-900/50 px-1.5 py-0.5 rounded">
+      {/* Scrollable Station Cards */}
+      <div className="relative">
+        {/* Scroll Buttons */}
+        <button
+          onClick={() => scroll('left')}
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-slate-900/90 hover:bg-slate-700 border border-slate-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+        >
+          ←
+        </button>
+        <button
+          onClick={() => scroll('right')}
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-slate-900/90 hover:bg-slate-700 border border-slate-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+        >
+          →
+        </button>
+
+        {/* Cards Container */}
+        <div
+          ref={scrollRef}
+          className="flex gap-4 overflow-x-auto pb-4 px-12 scroll-smooth snap-x snap-mandatory"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}
+        >
+          {filteredStations.map((station) => {
+            const dist = haversineDistance(station.lat, station.lng, selectedLocation.lat, selectedLocation.lng);
+            return (
+              <div
+                key={`${station.network}-${station.code}`}
+                className="flex-shrink-0 w-72 bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 hover:border-slate-600 transition-all snap-start"
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <code className="text-sm font-mono text-cyan-400 bg-slate-800 px-2 py-0.5 rounded">
                       {station.code}
                     </code>
-                  </td>
-                  <td className="px-3 py-2 text-white text-xs">{station.name}</td>
-                  <td className="px-3 py-2">
-                    <span className={`text-xs px-2 py-0.5 rounded border ${networkColors[station.network]}`}>
-                      {station.network}
+                    <h4 className="text-white font-semibold mt-1">{station.name}</h4>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded border ${networkColors[station.network]}`}>
+                    {station.network}
+                  </span>
+                </div>
+
+                {/* Info Grid */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">📍</span>
+                    <span className="text-slate-400">{station.region}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">🌐</span>
+                    <span className="text-slate-400 font-mono">
+                      {station.lat.toFixed(2)}°, {station.lng.toFixed(2)}°
                     </span>
-                  </td>
-                  <td className="px-3 py-2 text-slate-400 text-xs">{station.region}</td>
-                  <td className="px-3 py-2 text-slate-400 text-xs font-mono">
-                    {station.lat.toFixed(2)}°, {station.lng.toFixed(2)}°
-                  </td>
-                  <td className="px-3 py-2 text-slate-400 text-xs font-mono">{station.elevation} m</td>
-                  <td className="px-3 py-2 text-emerald-400 text-xs font-mono">{Math.round(dist)} km</td>
-                  <td className="px-3 py-2">
-                    <span className={`w-2 h-2 rounded-full inline-block ${station.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">⛰️</span>
+                    <span className="text-slate-400 font-mono">{station.elevation} m</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">📏</span>
+                    <span className="text-emerald-400 font-mono font-bold">{Math.round(dist)} km</span>
+                    <span className="text-slate-500">dari {selectedLocation.name}</span>
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div className="mt-3 pt-3 border-t border-slate-700/30 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${station.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+                    <span className="text-xs text-slate-400">
+                      {station.status === 'active' ? 'Aktif' : 'Tidak Aktif'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-600 font-mono">
+                    {station.network}.{station.code}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {filteredStations.length === 0 && (
+          <div className="text-center py-12 text-slate-500 text-sm">
+            Tidak ada stasiun yang cocok dengan filter.
+          </div>
+        )}
       </div>
 
-      {filteredStations.length === 0 && (
-        <div className="text-center py-8 text-slate-500 text-sm">
-          Tidak ada stasiun yang cocok dengan filter.
-        </div>
-      )}
+      {/* Legend */}
+      <div className="mt-4 flex items-center justify-center gap-4 text-xs text-slate-500">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          Aktif
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+          Tidak Aktif
+        </span>
+        <span className="text-slate-600">← Geser untuk melihat lebih banyak →</span>
+      </div>
     </div>
   );
 }
