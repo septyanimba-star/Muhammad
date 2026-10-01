@@ -36,6 +36,69 @@ const USER_LOCATIONS = [
   { name: 'Galela', lat: 1.80, lng: 127.85, desc: 'Halmahera Utara' },
 ];
 
+// Stasiun Seismik di Indonesia (BMKG, Geofon, IRIS, USGS)
+interface SeismicStation {
+  code: string;
+  name: string;
+  network: 'BMKG' | 'Geofon' | 'IRIS' | 'USGS';
+  lat: number;
+  lng: number;
+  elevation: number;
+  region: string;
+  status: 'active' | 'inactive';
+}
+
+const SEISMIC_STATIONS: SeismicStation[] = [
+  // BMKG Stations - Maluku Utara & sekitarnya
+  { code: 'MLI', name: 'Ternate', network: 'BMKG', lat: 0.79, lng: 127.38, elevation: 50, region: 'Maluku Utara', status: 'active' },
+  { code: 'TOB', name: 'Tobelo', network: 'BMKG', lat: 2.08, lng: 128.00, elevation: 25, region: 'Halmahera Utara', status: 'active' },
+  { code: 'LAB', name: 'Labuha', network: 'BMKG', lat: -0.70, lng: 127.85, elevation: 15, region: 'Halmahera Selatan', status: 'active' },
+  { code: 'WED', name: 'Weda', network: 'BMKG', lat: 0.25, lng: 128.20, elevation: 30, region: 'Halmahera Tengah', status: 'active' },
+  { code: 'MOR', name: 'Morotai', network: 'BMKG', lat: 2.30, lng: 128.35, elevation: 20, region: 'Pulau Morotai', status: 'active' },
+  { code: 'SOF', name: 'Sofifi', network: 'BMKG', lat: 0.72, lng: 127.55, elevation: 35, region: 'Maluku Utara', status: 'active' },
+  { code: 'MAB', name: 'Maba', network: 'BMKG', lat: 0.55, lng: 128.50, elevation: 40, region: 'Halmahera Timur', status: 'active' },
+  { code: 'KAO', name: 'Kao', network: 'BMKG', lat: 1.65, lng: 127.75, elevation: 45, region: 'Halmahera Utara', status: 'active' },
+  { code: 'GLE', name: 'Galela', network: 'BMKG', lat: 1.80, lng: 127.85, elevation: 30, region: 'Halmahera Utara', status: 'active' },
+  { code: 'TID', name: 'Tidore', network: 'BMKG', lat: 0.60, lng: 127.40, elevation: 25, region: 'Tidore Kepulauan', status: 'active' },
+  
+  // BMKG - Sulawesi & sekitarnya
+  { code: 'MNA', name: 'Manado', network: 'BMKG', lat: 1.49, lng: 124.84, elevation: 80, region: 'Sulawesi Utara', status: 'active' },
+  { code: 'PLU', name: 'Palu', network: 'BMKG', lat: -0.89, lng: 119.85, elevation: 60, region: 'Sulawesi Tengah', status: 'active' },
+  { code: 'GOR', name: 'Gorontalo', network: 'BMKG', lat: 0.53, lng: 123.06, elevation: 15, region: 'Gorontalo', status: 'active' },
+  { code: 'KDI', name: 'Kendari', network: 'BMKG', lat: -3.99, lng: 122.51, elevation: 25, region: 'Sulawesi Tenggara', status: 'active' },
+  { code: 'MDO', name: 'Makassar', network: 'BMKG', lat: -5.14, lng: 119.43, elevation: 10, region: 'Sulawesi Selatan', status: 'active' },
+  
+  // Geofon (GFZ) Stations - Indonesia
+  { code: 'JAGJ', name: 'Jagong', network: 'Geofon', lat: 4.63, lng: 96.73, elevation: 1200, region: 'Aceh', status: 'active' },
+  { code: 'SMRI', name: 'Semarang', network: 'Geofon', lat: -6.97, lng: 110.43, elevation: 50, region: 'Jawa Tengah', status: 'active' },
+  { code: 'JAY', name: 'Jayapura', network: 'Geofon', lat: -2.53, lng: 140.72, elevation: 100, region: 'Papua', status: 'active' },
+  { code: 'BANI', name: 'Banda Neira', network: 'Geofon', lat: -4.52, lng: 129.90, elevation: 15, region: 'Maluku', status: 'active' },
+  { code: 'TNT', name: 'Ternate', network: 'Geofon', lat: 0.80, lng: 127.37, elevation: 55, region: 'Maluku Utara', status: 'active' },
+  { code: 'SORO', name: 'Sorong', network: 'Geofon', lat: -0.88, lng: 131.25, elevation: 20, region: 'Papua Barat', status: 'active' },
+  { code: 'AMPI', name: 'Ambon', network: 'Geofon', lat: -3.66, lng: 128.18, elevation: 30, region: 'Maluku', status: 'active' },
+  { code: 'MANA', name: 'Manado', network: 'Geofon', lat: 1.48, lng: 124.85, elevation: 85, region: 'Sulawesi Utara', status: 'active' },
+  
+  // IRIS GSN Stations - Indonesia
+  { code: 'JAG', name: 'Jagong', network: 'IRIS', lat: 4.63, lng: 96.73, elevation: 1200, region: 'Aceh', status: 'active' },
+  { code: 'FAKI', name: 'Fakfak', network: 'IRIS', lat: -2.93, lng: 132.30, elevation: 25, region: 'Papua Barat', status: 'active' },
+  { code: 'SWRT', name: 'Sorong', network: 'IRIS', lat: -0.87, lng: 131.24, elevation: 22, region: 'Papua Barat', status: 'active' },
+  { code: 'JAYP', name: 'Jayapura', network: 'IRIS', lat: -2.54, lng: 140.71, elevation: 105, region: 'Papua', status: 'active' },
+  { code: 'AMBO', name: 'Ambon', network: 'IRIS', lat: -3.67, lng: 128.17, elevation: 35, region: 'Maluku', status: 'active' },
+  { code: 'BAND', name: 'Bandung', network: 'IRIS', lat: -6.91, lng: 107.61, elevation: 715, region: 'Jawa Barat', status: 'active' },
+  { code: 'BKR', name: 'Bukittinggi', network: 'IRIS', lat: -0.30, lng: 100.37, elevation: 930, region: 'Sumatra Barat', status: 'active' },
+  { code: 'UGM', name: 'Yogyakarta', network: 'IRIS', lat: -7.77, lng: 110.38, elevation: 120, region: 'DIY', status: 'active' },
+  
+  // USGS ANSS Stations - Indonesia
+  { code: 'ID.JAG', name: 'Jagong', network: 'USGS', lat: 4.63, lng: 96.73, elevation: 1200, region: 'Aceh', status: 'active' },
+  { code: 'ID.BAND', name: 'Bandung', network: 'USGS', lat: -6.91, lng: 107.61, elevation: 715, region: 'Jawa Barat', status: 'active' },
+  { code: 'ID.BKR', name: 'Bukittinggi', network: 'USGS', lat: -0.30, lng: 100.37, elevation: 930, region: 'Sumatra Barat', status: 'active' },
+  { code: 'ID.UGM', name: 'Yogyakarta', network: 'USGS', lat: -7.77, lng: 110.38, elevation: 120, region: 'DIY', status: 'active' },
+  { code: 'ID.JAYP', name: 'Jayapura', network: 'USGS', lat: -2.54, lng: 140.71, elevation: 105, region: 'Papua', status: 'active' },
+  { code: 'ID.AMBO', name: 'Ambon', network: 'USGS', lat: -3.67, lng: 128.17, elevation: 35, region: 'Maluku', status: 'active' },
+  { code: 'ID.SWRT', name: 'Sorong', network: 'USGS', lat: -0.87, lng: 131.24, elevation: 22, region: 'Papua Barat', status: 'active' },
+  { code: 'ID.MANA', name: 'Manado', network: 'USGS', lat: 1.48, lng: 124.85, elevation: 85, region: 'Sulawesi Utara', status: 'active' },
+];
+
 // Sumber gempa di sekitar Maluku Utara
 const SAMPLE_QUAKES: Omit<QuakeEvent, 'id' | 'pWaveSpeed' | 'sWaveSpeed' | 'timestamp' | 'distance' | 'mmi'>[] = [
   { location: 'Selat Maluku', latitude: 1.50, longitude: 127.20, depth: 10, magnitude: 5.8 },
@@ -303,6 +366,212 @@ function MMIScale() {
       <p className="text-xs text-slate-500 mt-2">
         * Hanya MMI III ke atas yang memicu peringatan dini
       </p>
+    </div>
+  );
+}
+
+function StationViewer({ selectedLocation }: { selectedLocation: typeof USER_LOCATIONS[0] }) {
+  const [filterNetwork, setFilterNetwork] = useState<'all' | 'BMKG' | 'Geofon' | 'IRIS' | 'USGS'>('all');
+  const [filterRegion, setFilterRegion] = useState('all');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const regions = Array.from(new Set(SEISMIC_STATIONS.map(s => s.region))).sort();
+  
+  const filteredStations = SEISMIC_STATIONS.filter(s => {
+    if (filterNetwork !== 'all' && s.network !== filterNetwork) return false;
+    if (filterRegion !== 'all' && s.region !== filterRegion) return false;
+    return true;
+  });
+
+  const networkColors: Record<string, string> = {
+    'BMKG': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    'Geofon': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+    'IRIS': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    'USGS': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  };
+
+  const networkTabs: Record<string, { icon: string; color: string; desc: string }> = {
+    'all': { icon: '🌐', color: 'text-white', desc: 'Semua Jaringan' },
+    'BMKG': { icon: '🇮🇩', color: 'text-emerald-400', desc: 'Badan Meteorologi, Klimatologi, dan Geofisika' },
+    'Geofon': { icon: '🇩🇪', color: 'text-cyan-400', desc: 'GFZ German Research Centre for Geosciences' },
+    'IRIS': { icon: '🌍', color: 'text-purple-400', desc: 'Incorporated Research Institutions for Seismology' },
+    'USGS': { icon: '🇺🇸', color: 'text-blue-400', desc: 'US Geological Survey - ANSS' },
+  };
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const scrollAmount = 320;
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  return (
+    <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 className="font-semibold text-white flex items-center gap-2">
+          <span>📡</span> Jaringan Stasiun Seismik di Indonesia
+        </h3>
+        <span className="text-xs text-slate-500">
+          {filteredStations.length} dari {SEISMIC_STATIONS.length} stasiun
+        </span>
+      </div>
+
+      {/* Network Tabs */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {Object.entries(networkTabs).map(([net, info]) => {
+          const count = net === 'all' ? SEISMIC_STATIONS.length : SEISMIC_STATIONS.filter(s => s.network === net).length;
+          const isActive = filterNetwork === net;
+          return (
+            <button
+              key={net}
+              onClick={() => setFilterNetwork(net as typeof filterNetwork)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all whitespace-nowrap ${
+                isActive
+                  ? 'bg-slate-700 border-slate-500 shadow-lg'
+                  : 'bg-slate-900/50 border-slate-700/30 hover:border-slate-600'
+              }`}
+            >
+              <span className="text-lg">{info.icon}</span>
+              <div className="text-left">
+                <div className={`text-sm font-bold ${isActive ? 'text-white' : info.color}`}>{net === 'all' ? 'Semua' : net}</div>
+                <div className="text-xs text-slate-500">{count} stasiun</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Network Description */}
+      {filterNetwork !== 'all' && (
+        <div className="mb-4 p-3 bg-slate-900/40 rounded-lg border border-slate-700/30">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{networkTabs[filterNetwork].icon}</span>
+            <div>
+              <div className={`text-sm font-bold ${networkTabs[filterNetwork].color}`}>{filterNetwork}</div>
+              <div className="text-xs text-slate-400">{networkTabs[filterNetwork].desc}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Region Filter */}
+      <div className="mb-4">
+        <select
+          value={filterRegion}
+          onChange={(e) => setFilterRegion(e.target.value)}
+          className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        >
+          <option value="all">📍 Semua Wilayah</option>
+          {regions.map(r => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Scrollable Station Cards */}
+      <div className="relative">
+        {/* Scroll Buttons */}
+        <button
+          onClick={() => scroll('left')}
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-slate-900/90 hover:bg-slate-700 border border-slate-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+        >
+          ←
+        </button>
+        <button
+          onClick={() => scroll('right')}
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-slate-900/90 hover:bg-slate-700 border border-slate-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+        >
+          →
+        </button>
+
+        {/* Cards Container */}
+        <div
+          ref={scrollRef}
+          className="flex gap-4 overflow-x-auto pb-4 px-12 scroll-smooth snap-x snap-mandatory"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}
+        >
+          {filteredStations.map((station) => {
+            const dist = haversineDistance(station.lat, station.lng, selectedLocation.lat, selectedLocation.lng);
+            return (
+              <div
+                key={`${station.network}-${station.code}`}
+                className="flex-shrink-0 w-72 bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 hover:border-slate-600 transition-all snap-start"
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <code className="text-sm font-mono text-cyan-400 bg-slate-800 px-2 py-0.5 rounded">
+                      {station.code}
+                    </code>
+                    <h4 className="text-white font-semibold mt-1">{station.name}</h4>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded border ${networkColors[station.network]}`}>
+                    {station.network}
+                  </span>
+                </div>
+
+                {/* Info Grid */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">📍</span>
+                    <span className="text-slate-400">{station.region}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">🌐</span>
+                    <span className="text-slate-400 font-mono">
+                      {station.lat.toFixed(2)}°, {station.lng.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">⛰️</span>
+                    <span className="text-slate-400 font-mono">{station.elevation} m</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">📏</span>
+                    <span className="text-emerald-400 font-mono font-bold">{Math.round(dist)} km</span>
+                    <span className="text-slate-500">dari {selectedLocation.name}</span>
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div className="mt-3 pt-3 border-t border-slate-700/30 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${station.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+                    <span className="text-xs text-slate-400">
+                      {station.status === 'active' ? 'Aktif' : 'Tidak Aktif'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-600 font-mono">
+                    {station.network}.{station.code}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {filteredStations.length === 0 && (
+          <div className="text-center py-12 text-slate-500 text-sm">
+            Tidak ada stasiun yang cocok dengan filter.
+          </div>
+        )}
+      </div>
+
+      {/* Legend */}
+      <div className="mt-4 flex items-center justify-center gap-4 text-xs text-slate-500">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          Aktif
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+          Tidak Aktif
+        </span>
+        <span className="text-slate-600">← Geser untuk melihat lebih banyak →</span>
+      </div>
     </div>
   );
 }
@@ -779,6 +1048,9 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Station Viewer */}
+          <StationViewer selectedLocation={selectedLocation} />
         </main>
       </ShakeEffect>
 
