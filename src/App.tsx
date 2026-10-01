@@ -8,10 +8,11 @@ interface QuakeEvent {
   longitude: number;
   depth: number; // km
   magnitude: number;
-  distance: number; // km from sensor
-  pWaveSpeed: number; // km/s
-  sWaveSpeed: number; // km/s
+  distance: number; // km ke lokasi penggunaan
+  pWaveSpeed: number;
+  sWaveSpeed: number;
   timestamp: number;
+  mmi: number; // Modified Mercalli Intensity di lokasi penggunaan
 }
 
 type AlertLevel = 'none' | 'watch' | 'advisory' | 'warning' | 'critical';
@@ -19,36 +20,82 @@ type AlertLevel = 'none' | 'watch' | 'advisory' | 'warning' | 'critical';
 // ===================== CONSTANTS =====================
 const P_WAVE_SPEED = 6.0; // km/s
 const S_WAVE_SPEED = 3.5; // km/s
+const MMI_THRESHOLD = 3; // Batas minimum MMI untuk peringatan aktif
 
-const SAMPLE_QUAKES: Omit<QuakeEvent, 'id' | 'pWaveSpeed' | 'sWaveSpeed' | 'timestamp'>[] = [
-  { location: 'Palu, Sulawesi Tengah', latitude: -0.89, longitude: 119.85, depth: 10, magnitude: 5.2, distance: 80 },
-  { location: 'Yogyakarta, DIY', latitude: -7.79, longitude: 110.37, depth: 15, magnitude: 4.1, distance: 45 },
-  { location: 'Padang, Sumatra Barat', latitude: -0.95, longitude: 100.35, depth: 20, magnitude: 6.0, distance: 120 },
-  { location: 'Jayapura, Papua', latitude: -2.53, longitude: 140.72, depth: 25, magnitude: 5.8, distance: 95 },
-  { location: 'Mataram, NTB', latitude: -8.58, longitude: 116.12, depth: 12, magnitude: 4.7, distance: 60 },
-  { location: 'Manado, Sulawesi Utara', latitude: 1.49, longitude: 124.84, depth: 30, magnitude: 5.5, distance: 110 },
-  { location: 'Banda Aceh', latitude: 5.54, longitude: 95.32, depth: 18, magnitude: 6.5, distance: 150 },
-  { location: 'Jakarta Selatan', latitude: -6.26, longitude: 106.81, depth: 8, magnitude: 3.5, distance: 30 },
-  { location: 'Bengkulu', latitude: -3.80, longitude: 102.26, depth: 22, magnitude: 5.9, distance: 130 },
-  { location: 'Ambon, Maluku', latitude: -3.66, longitude: 128.18, depth: 14, magnitude: 5.0, distance: 70 },
+// Lokasi Penggunaan di Maluku Utara
+const USER_LOCATIONS = [
+  { name: 'Ternate', lat: 0.79, lng: 127.38, desc: 'Kota Ternate - Ibu Kota Provinsi' },
+  { name: 'Sofifi', lat: 0.72, lng: 127.55, desc: 'Ibu Kota Provinsi Maluku Utara' },
+  { name: 'Tidore', lat: 0.60, lng: 127.40, desc: 'Kota Tidore Kepulauan' },
+  { name: 'Tobelo', lat: 2.08, lng: 128.00, desc: 'Halmahera Utara' },
+  { name: 'Labuha', lat: -0.70, lng: 127.85, desc: 'Halmahera Selatan' },
+  { name: 'Weda', lat: 0.25, lng: 128.20, desc: 'Halmahera Tengah' },
+  { name: 'Maba', lat: 0.55, lng: 128.50, desc: 'Halmahera Timur' },
+  { name: 'Morotai', lat: 2.30, lng: 128.35, desc: 'Pulau Morotai' },
+  { name: 'Kao', lat: 1.65, lng: 127.75, desc: 'Halmahera Utara' },
+  { name: 'Galela', lat: 1.80, lng: 127.85, desc: 'Halmahera Utara' },
 ];
 
-function getAlertLevel(mag: number, dist: number): AlertLevel {
-  const intensity = mag - Math.log10(dist) * 1.5;
-  if (intensity > 4) return 'critical';
-  if (intensity > 3) return 'warning';
-  if (intensity > 2) return 'advisory';
-  if (intensity > 1) return 'watch';
-  return 'none';
+// Sumber gempa di sekitar Maluku Utara
+const SAMPLE_QUAKES: Omit<QuakeEvent, 'id' | 'pWaveSpeed' | 'sWaveSpeed' | 'timestamp' | 'distance' | 'mmi'>[] = [
+  { location: 'Selat Maluku', latitude: 1.50, longitude: 127.20, depth: 10, magnitude: 5.8 },
+  { location: 'Halmahera Barat', latitude: 1.20, longitude: 127.10, depth: 15, magnitude: 6.2 },
+  { location: 'Ternate - Laut', latitude: 0.90, longitude: 127.10, depth: 20, magnitude: 5.0 },
+  { location: 'Halmahera Selatan', latitude: -0.30, longitude: 127.60, depth: 12, magnitude: 5.5 },
+  { location: 'Kep. Sula', latitude: -1.80, longitude: 125.50, depth: 25, magnitude: 6.0 },
+  { location: 'Morotai - Barat Laut', latitude: 2.80, longitude: 127.80, depth: 30, magnitude: 6.5 },
+  { location: 'Obi - Selatan', latitude: -1.50, longitude: 127.70, depth: 18, magnitude: 5.3 },
+  { location: 'Halmahera Timur', latitude: 0.80, longitude: 128.80, depth: 14, magnitude: 4.8 },
+  { location: 'Laut Halmahera', latitude: 1.80, longitude: 128.50, depth: 22, magnitude: 5.6 },
+  { location: 'Tidore - Laut', latitude: 0.40, longitude: 127.20, depth: 8, magnitude: 4.5 },
+  { location: 'Pulau Bacan', latitude: -0.85, longitude: 127.60, depth: 16, magnitude: 5.1 },
+  { location: 'Makian', latitude: 0.35, longitude: 127.65, depth: 12, magnitude: 4.2 },
+];
+
+// Konversi Magnitude + jarak ke estimasi MMI (simplified)
+// MMI ≈ 1.5 * M - 1.5 * log10(R) - 0.5, dengan R = jarak hiposentral
+function estimateMMI(magnitude: number, distance: number, depth: number): number {
+  const hypocentralDistance = Math.sqrt(distance * distance + depth * depth);
+  const R = Math.max(1, hypocentralDistance);
+  const mmi = 1.5 * magnitude - 1.5 * Math.log10(R) - 0.5;
+  return Math.round(mmi * 10) / 10;
+}
+
+function getMMIDescription(mmi: number): string {
+  if (mmi >= 8) return 'Kerusakan berat';
+  if (mmi >= 7) return 'Kerusakan sedang';
+  if (mmi >= 6) return 'Kuat - sulit berdiri';
+  if (mmi >= 5) return 'Cukup kuat - benda bergoyang';
+  if (mmi >= 4) return 'Sedang - terasa di dalam rumah';
+  if (mmi >= 3) return 'Ringan - terasa oleh beberapa orang';
+  if (mmi >= 2) return 'Lemah - hanya terasa oleh sedikit orang';
+  return 'Tidak terasa';
+}
+
+function getMMIColor(mmi: number): string {
+  if (mmi >= 7) return 'text-red-500';
+  if (mmi >= 6) return 'text-red-400';
+  if (mmi >= 5) return 'text-orange-400';
+  if (mmi >= 4) return 'text-yellow-400';
+  if (mmi >= 3) return 'text-cyan-400';
+  return 'text-slate-400';
+}
+
+function getAlertLevel(mmi: number): AlertLevel {
+  if (mmi < MMI_THRESHOLD) return 'none';
+  if (mmi >= 6) return 'critical';
+  if (mmi >= 5) return 'warning';
+  if (mmi >= 4) return 'advisory';
+  return 'watch';
 }
 
 function getAlertInfo(level: AlertLevel) {
   switch (level) {
-    case 'critical': return { label: 'KRITIS', color: 'red', bg: 'bg-red-600', text: 'text-red-400', border: 'border-red-500', desc: 'Guncangan sangat keras! Lindungi kepala segera!' };
-    case 'warning': return { label: 'BAHAYA', color: 'orange', bg: 'bg-orange-600', text: 'text-orange-400', border: 'border-orange-500', desc: 'Guncangan keras diperkirakan akan tiba.' };
-    case 'advisory': return { label: 'WASPADA', color: 'yellow', bg: 'bg-yellow-600', text: 'text-yellow-400', border: 'border-yellow-500', desc: 'Guncangan sedang, bersiaplah.' };
-    case 'watch': return { label: 'PERHATIAN', color: 'blue', bg: 'bg-blue-600', text: 'text-blue-400', border: 'border-blue-500', desc: 'Guncangan ringan mungkin terasa.' };
-    default: return { label: 'AMAN', color: 'green', bg: 'bg-emerald-600', text: 'text-emerald-400', border: 'border-emerald-500', desc: 'Tidak ada ancaman guncangan.' };
+    case 'critical': return { label: 'KRITIS', bg: 'bg-red-600', text: 'text-red-400', border: 'border-red-500', desc: 'Guncangan sangat keras! Lindungi kepala segera!' };
+    case 'warning': return { label: 'BAHAYA', bg: 'bg-orange-600', text: 'text-orange-400', border: 'border-orange-500', desc: 'Guncangan keras diperkirakan akan tiba.' };
+    case 'advisory': return { label: 'WASPADA', bg: 'bg-yellow-600', text: 'text-yellow-400', border: 'border-yellow-500', desc: 'Guncangan sedang, bersiaplah.' };
+    case 'watch': return { label: 'PERHATIAN', bg: 'bg-blue-600', text: 'text-blue-400', border: 'border-blue-500', desc: 'Guncangan ringan mungkin terasa.' };
+    default: return { label: 'AMAN', bg: 'bg-emerald-600', text: 'text-emerald-400', border: 'border-emerald-500', desc: 'Tidak ada ancaman guncangan (MMI < 3).' };
   }
 }
 
@@ -59,14 +106,21 @@ function formatTime(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toFixed(1).padStart(4, '0')}`;
 }
 
+// Haversine formula - jarak dalam km
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ===================== COMPONENTS =====================
 
 function SeismicWaveAnimation({ progress, active }: { progress: number; active: boolean }) {
   return (
     <div className="relative w-full h-48 overflow-hidden rounded-xl bg-slate-900/80 border border-slate-700/50">
-      {/* Grid lines */}
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 800 200" preserveAspectRatio="none">
-        {/* Grid */}
         {Array.from({ length: 20 }).map((_, i) => (
           <line key={`v${i}`} x1={i * 40} y1="0" x2={i * 40} y2="200" stroke="#1e293b" strokeWidth="0.5" />
         ))}
@@ -75,38 +129,19 @@ function SeismicWaveAnimation({ progress, active }: { progress: number; active: 
         ))}
         <line x1="0" y1="100" x2="800" y2="100" stroke="#334155" strokeWidth="1" />
 
-        {/* P-Wave */}
         {active && (
-          <path
-            d={generateWavePath(progress, 'p')}
-            fill="none"
-            stroke="#22d3ee"
-            strokeWidth="2.5"
-            opacity="0.9"
-          />
+          <path d={generateWavePath(progress, 'p')} fill="none" stroke="#22d3ee" strokeWidth="2.5" opacity="0.9" />
+        )}
+        {active && (
+          <path d={generateWavePath(progress, 's')} fill="none" stroke="#f97316" strokeWidth="2.5" opacity="0.9" />
         )}
 
-        {/* S-Wave */}
-        {active && (
-          <path
-            d={generateWavePath(progress, 's')}
-            fill="none"
-            stroke="#f97316"
-            strokeWidth="2.5"
-            opacity="0.9"
-          />
-        )}
-
-        {/* Sensor position marker */}
         <circle cx="700" cy="100" r="6" fill="#10b981" stroke="#064e3b" strokeWidth="2" />
         <text x="700" y="130" textAnchor="middle" fill="#10b981" fontSize="11" fontWeight="bold">SENSOR</text>
-
-        {/* Epicenter */}
         <circle cx="50" cy="100" r="6" fill="#ef4444" stroke="#7f1d1d" strokeWidth="2" />
         <text x="50" y="80" textAnchor="middle" fill="#ef4444" fontSize="11" fontWeight="bold">EPICENTER</text>
       </svg>
 
-      {/* Legend */}
       <div className="absolute top-2 right-2 flex gap-3 text-xs">
         <span className="flex items-center gap-1">
           <span className="w-4 h-0.5 bg-cyan-400 inline-block"></span>
@@ -150,9 +185,7 @@ function CountdownDisplay({ seconds, total }: { seconds: number; total: number }
   return (
     <div className="relative flex items-center justify-center">
       <svg width="240" height="240" className="transform -rotate-90">
-        {/* Background circle */}
         <circle cx="120" cy="120" r={radius} fill="none" stroke="#1e293b" strokeWidth="8" />
-        {/* Progress circle */}
         <circle
           cx="120" cy="120" r={radius}
           fill="none"
@@ -163,7 +196,6 @@ function CountdownDisplay({ seconds, total }: { seconds: number; total: number }
           strokeLinecap="round"
           className="transition-all duration-200"
         />
-        {/* Glow effect */}
         {isUrgent && (
           <circle
             cx="120" cy="120" r={radius}
@@ -195,11 +227,7 @@ function CountdownDisplay({ seconds, total }: { seconds: number; total: number }
 
 function ShakeEffect({ active, children }: { active: boolean; children: React.ReactNode }) {
   if (!active) return <>{children}</>;
-  return (
-    <div className="animate-shake">
-      {children}
-    </div>
-  );
+  return <div className="animate-shake">{children}</div>;
 }
 
 function SafetyGuide() {
@@ -225,7 +253,7 @@ function SafetyGuide() {
       </div>
       <div className="mt-4 p-3 bg-red-900/20 border border-red-700/30 rounded-lg">
         <p className="text-xs text-red-300">
-          <strong>⚠️ PENTING:</strong> Setelah guncangan berhenti, segera evakuasi ke tempat terbuka. 
+          <strong>⚠️ PENTING:</strong> Setelah guncangan berhenti, segera evakuasi ke tempat terbuka.
           Jauhi gedung, pohon, dan kabel listrik. Waspadai gempa susulan.
         </p>
       </div>
@@ -245,6 +273,40 @@ function InfoCard({ label, value, unit, color = 'text-white' }: { label: string;
   );
 }
 
+function MMIScale() {
+  const scales = [
+    { mmi: 'I', desc: 'Tidak terasa', color: 'bg-slate-700' },
+    { mmi: 'II', desc: 'Lemah', color: 'bg-slate-600' },
+    { mmi: 'III', desc: 'Ringan', color: 'bg-cyan-700' },
+    { mmi: 'IV', desc: 'Sedang', color: 'bg-yellow-700' },
+    { mmi: 'V', desc: 'Cukup kuat', color: 'bg-orange-700' },
+    { mmi: 'VI', desc: 'Kuat', color: 'bg-red-700' },
+    { mmi: 'VII+', desc: 'Sangat kuat', color: 'bg-red-900' },
+  ];
+
+  return (
+    <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+      <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+        <span>📊</span> Skala MMI (Modified Mercalli)
+      </h3>
+      <p className="text-xs text-slate-400 mb-3">
+        Batas peringatan aktif: <strong className="text-cyan-400">MMI ≥ 3</strong>
+      </p>
+      <div className="grid grid-cols-7 gap-1">
+        {scales.map((s, i) => (
+          <div key={i} className={`${s.color} rounded p-2 text-center ${i >= 2 ? 'ring-1 ring-cyan-500/50' : ''}`}>
+            <div className="text-xs font-bold text-white">{s.mmi}</div>
+            <div className="text-xs text-white/70 mt-0.5 hidden md:block">{s.desc}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 mt-2">
+        * Hanya MMI III ke atas yang memicu peringatan dini
+      </p>
+    </div>
+  );
+}
+
 // ===================== MAIN APP =====================
 export default function App() {
   const [quake, setQuake] = useState<QuakeEvent | null>(null);
@@ -257,21 +319,47 @@ export default function App() {
   const [alertLevel, setAlertLevel] = useState<AlertLevel>('none');
   const [history, setHistory] = useState<QuakeEvent[]>([]);
   const [showGuide, setShowGuide] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(USER_LOCATIONS[0]);
+  const [belowThreshold, setBelowThreshold] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
 
   const triggerQuake = useCallback((selectedQuake?: typeof SAMPLE_QUAKES[number]) => {
     const q = selectedQuake || SAMPLE_QUAKES[Math.floor(Math.random() * SAMPLE_QUAKES.length)];
+    
+    // Hitung jarak dari epicenter ke lokasi penggunaan yang dipilih
+    const distance = haversineDistance(q.latitude, q.longitude, selectedLocation.lat, selectedLocation.lng);
+    
+    // Hitung estimasi MMI di lokasi penggunaan
+    const mmi = estimateMMI(q.magnitude, distance, q.depth);
+    
     const event: QuakeEvent = {
       ...q,
       id: `eq-${Date.now()}`,
+      distance: Math.round(distance),
       pWaveSpeed: P_WAVE_SPEED,
       sWaveSpeed: S_WAVE_SPEED,
       timestamp: Date.now(),
+      mmi,
     };
 
-    const pWaveTime = q.distance / P_WAVE_SPEED;
-    const sWaveTime = q.distance / S_WAVE_SPEED;
+    // Cek apakah MMI >= batas (3)
+    if (mmi < MMI_THRESHOLD) {
+      setQuake(event);
+      setBelowThreshold(true);
+      setIsRunning(false);
+      setAlertLevel('none');
+      setCountdown(0);
+      setTotalTime(0);
+      setWaveProgress(0);
+      setPWaveArrived(false);
+      setHistory(prev => [event, ...prev].slice(0, 10));
+      return;
+    }
+
+    setBelowThreshold(false);
+    const pWaveTime = distance / P_WAVE_SPEED;
+    const sWaveTime = distance / S_WAVE_SPEED;
     const warningTime = sWaveTime - pWaveTime;
 
     setQuake(event);
@@ -281,11 +369,11 @@ export default function App() {
     setIsShaking(false);
     setWaveProgress(0);
     setPWaveArrived(false);
-    setAlertLevel(getAlertLevel(q.magnitude, q.distance));
+    setAlertLevel(getAlertLevel(mmi));
     startTimeRef.current = Date.now();
 
     setHistory(prev => [event, ...prev].slice(0, 10));
-  }, []);
+  }, [selectedLocation]);
 
   useEffect(() => {
     if (!isRunning || !quake) return;
@@ -327,7 +415,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
-      {/* Shake animation CSS */}
       <style>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
@@ -341,36 +428,30 @@ export default function App() {
           80% { transform: translateX(2px); }
           90% { transform: translateX(-1px); }
         }
-        .animate-shake {
-          animation: shake 0.5s ease-in-out infinite;
-        }
+        .animate-shake { animation: shake 0.5s ease-in-out infinite; }
         @keyframes pulse-ring {
           0% { transform: scale(0.8); opacity: 1; }
           100% { transform: scale(2); opacity: 0; }
         }
-        .animate-pulse-ring {
-          animation: pulse-ring 1.5s ease-out infinite;
-        }
+        .animate-pulse-ring { animation: pulse-ring 1.5s ease-out infinite; }
         @keyframes siren {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.3; }
         }
-        .animate-siren {
-          animation: siren 0.5s ease-in-out infinite;
-        }
+        .animate-siren { animation: siren 0.5s ease-in-out infinite; }
       `}</style>
 
       {/* Header */}
       <header className="border-b border-slate-700/50 bg-slate-900/90 backdrop-blur-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isRunning ? 'bg-red-600 animate-siren' : 'bg-gradient-to-br from-emerald-400 to-cyan-500'}`}>
-                <span className="text-xl">🌏</span>
+                <span className="text-xl">🌋</span>
               </div>
               <div>
-                <h1 className="text-lg font-bold text-white leading-tight">Earthquake Early Warning</h1>
-                <p className="text-xs text-slate-400">Sistem Peringatan Dini Gempa Bumi</p>
+                <h1 className="text-lg font-bold text-white leading-tight">Gempa Malut</h1>
+                <p className="text-xs text-slate-400">Sistem Peringatan Dini Gempa - Maluku Utara</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -392,6 +473,36 @@ export default function App() {
 
       <ShakeEffect active={isShaking}>
         <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+          {/* Lokasi Penggunaan Selector */}
+          <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">📍</span>
+              <h3 className="font-semibold text-white">Lokasi Penggunaan (Sensor/Target)</h3>
+              <span className="text-xs text-slate-500">— Pilih wilayah di Maluku Utara</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {USER_LOCATIONS.map((loc) => (
+                <button
+                  key={loc.name}
+                  onClick={() => setSelectedLocation(loc)}
+                  disabled={isRunning}
+                  className={`p-2.5 rounded-lg border text-left transition-all ${
+                    selectedLocation.name === loc.name
+                      ? 'bg-emerald-900/40 border-emerald-500 text-emerald-300'
+                      : 'bg-slate-900/50 border-slate-700/30 text-slate-400 hover:border-slate-500 hover:text-white'
+                  } disabled:opacity-50`}
+                >
+                  <div className="font-medium text-sm">{loc.name}</div>
+                  <div className="text-xs opacity-70 mt-0.5">{loc.desc}</div>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>Aktif di: <strong className="text-emerald-400">{selectedLocation.name}</strong> ({selectedLocation.lat.toFixed(2)}°, {selectedLocation.lng.toFixed(2)}°)</span>
+            </div>
+          </div>
+
           {/* Alert Banner */}
           {isRunning && (
             <div className={`${alertInfo.bg} rounded-xl p-4 border ${alertInfo.border} shadow-lg`}>
@@ -403,15 +514,45 @@ export default function App() {
                   <div className="absolute inset-0 rounded-full bg-white/10 animate-pulse-ring"></div>
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-white text-lg">{alertInfo.label}</span>
                     <span className="px-2 py-0.5 bg-white/20 rounded text-xs text-white font-mono">
                       M{quake?.magnitude.toFixed(1)}
                     </span>
+                    <span className="px-2 py-0.5 bg-white/20 rounded text-xs text-white font-mono">
+                      MMI {quake?.mmi.toFixed(1)}
+                    </span>
                   </div>
                   <p className="text-white/80 text-sm">{alertInfo.desc}</p>
                   <p className="text-white/60 text-xs mt-0.5">
-                    📍 {quake?.location} — Kedalaman {quake?.depth} km — Jarak {quake?.distance} km
+                    📍 {quake?.location} → Target: {selectedLocation.name} — Kedalaman {quake?.depth} km — Jarak {quake?.distance} km
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Below Threshold Warning */}
+          {belowThreshold && quake && (
+            <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✅</span>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-emerald-300">DI BAWAH BATAS PERINGATAN</span>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 rounded text-xs text-emerald-300 font-mono">
+                      M{quake.magnitude.toFixed(1)}
+                    </span>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 rounded text-xs text-emerald-300 font-mono">
+                      MMI {quake.mmi.toFixed(1)}
+                    </span>
+                  </div>
+                  <p className="text-emerald-200/80 text-sm">
+                    Estimasi MMI di {selectedLocation.name} adalah <strong>{quake.mmi.toFixed(1)}</strong> (di bawah batas MMI ≥ 3).
+                    Tidak ada peringatan dini yang diperlukan.
+                  </p>
+                  <p className="text-emerald-300/60 text-xs mt-1">
+                    📍 {quake.location} → {selectedLocation.name} — Jarak {quake.distance} km
                   </p>
                 </div>
               </div>
@@ -419,26 +560,25 @@ export default function App() {
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Panel - Countdown */}
+            {/* Left Panel */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Countdown Circle */}
+              {/* Countdown */}
               <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-6">
                 <div className="flex flex-col md:flex-row items-center gap-6">
                   <CountdownDisplay seconds={countdown} total={totalTime} />
-                  
+
                   <div className="flex-1 space-y-3 w-full">
-                    {/* Status */}
                     <div className="flex items-center gap-2">
                       <span className={`w-3 h-3 rounded-full ${isRunning ? 'bg-red-400 animate-pulse' : pWaveArrived ? 'bg-cyan-400' : 'bg-slate-600'}`}></span>
                       <span className="text-sm text-slate-300">
                         {!quake ? 'Menunggu deteksi...' :
+                          belowThreshold ? '✓ Guncangan di bawah batas MMI 3' :
                           isRunning ? (pWaveArrived ? 'Gelombang P terdeteksi!' : 'Menunggu gelombang P...') :
                           isShaking ? '💥 GUNCANGAN TIBA!' : 'Siaga'}
                       </span>
                     </div>
 
-                    {/* Wave info */}
-                    {quake && (
+                    {quake && !belowThreshold && (
                       <div className="grid grid-cols-2 gap-2">
                         <div className="bg-cyan-900/20 border border-cyan-700/30 rounded-lg p-2.5">
                           <div className="text-xs text-cyan-400">Gelombang P</div>
@@ -453,23 +593,29 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Quick Info */}
-                    {quake && (
+                    {quake && !belowThreshold && (
                       <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
                         <div className="text-xs text-slate-500 mb-1">Waktu Peringatan</div>
                         <div className="text-xl font-bold font-mono text-emerald-400">
                           {warningTime.toFixed(1)} <span className="text-xs text-slate-400">detik</span>
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          Selisih kedatangan P dan S wave
+                      </div>
+                    )}
+
+                    {quake && (
+                      <div className={`rounded-lg p-3 border ${quake.mmi >= MMI_THRESHOLD ? 'bg-slate-900/50 border-slate-700/30' : 'bg-emerald-900/20 border-emerald-700/30'}`}>
+                        <div className="text-xs text-slate-500 mb-1">Estimasi MMI di {selectedLocation.name}</div>
+                        <div className={`text-xl font-bold font-mono ${getMMIColor(quake.mmi)}`}>
+                          MMI {quake.mmi.toFixed(1)}
                         </div>
+                        <div className="text-xs text-slate-500 mt-0.5">{getMMIDescription(quake.mmi)}</div>
                       </div>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Seismic Wave Visualization */}
+              {/* Wave Visualization */}
               <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
                 <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                   <span>📈</span> Visualisasi Gelombang Seismik
@@ -477,7 +623,7 @@ export default function App() {
                 <SeismicWaveAnimation progress={waveProgress} active={isRunning || isShaking} />
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="bg-slate-900/40 rounded p-2">
-                    <div className="text-slate-500">Jarak Episenter</div>
+                    <div className="text-slate-500">Jarak ke {selectedLocation.name}</div>
                     <div className="text-white font-mono font-bold">{quake?.distance || '—'} km</div>
                   </div>
                   <div className="bg-slate-900/40 rounded p-2">
@@ -494,28 +640,30 @@ export default function App() {
               {/* Info Cards */}
               {quake && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <InfoCard label="Lokasi" value={quake.location.split(',')[0]} color="text-white" />
+                  <InfoCard label="Lokasi Gempa" value={quake.location.split(' - ')[0]} color="text-white" />
                   <InfoCard label="Magnitudo" value={`M${quake.magnitude.toFixed(1)}`} color={quake.magnitude >= 5 ? 'text-red-400' : 'text-yellow-400'} />
                   <InfoCard label="Kedalaman" value={quake.depth} unit="km" color="text-cyan-400" />
-                  <InfoCard label="Jarak" value={quake.distance} unit="km" color="text-emerald-400" />
+                  <InfoCard label="MMI @ " value={quake.mmi.toFixed(1)} unit={selectedLocation.name} color={getMMIColor(quake.mmi)} />
                 </div>
               )}
 
-              {/* Safety Guide */}
+              {/* MMI Scale */}
+              <MMIScale />
+
               {showGuide && <SafetyGuide />}
             </div>
 
-            {/* Right Panel - Controls & History */}
+            {/* Right Panel */}
             <div className="space-y-6">
               {/* Trigger Panel */}
               <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5">
                 <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                   <span>🎮</span> Simulasi Gempa
                 </h3>
-                <p className="text-xs text-slate-400 mb-4">
-                  Pilih lokasi atau gunakan acak untuk mensimulasikan peringatan dini gempa bumi.
+                <p className="text-xs text-slate-400 mb-3">
+                  Target: <strong className="text-emerald-400">{selectedLocation.name}</strong>
                 </p>
-                
+
                 <button
                   onClick={() => triggerQuake()}
                   disabled={isRunning}
@@ -534,30 +682,42 @@ export default function App() {
                 </button>
 
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {SAMPLE_QUAKES.map((q, i) => (
-                    <button
-                      key={i}
-                      onClick={() => !isRunning && triggerQuake(q)}
-                      disabled={isRunning}
-                      className="w-full text-left p-2.5 bg-slate-900/50 hover:bg-slate-700/50 disabled:hover:bg-slate-900/50 rounded-lg border border-slate-700/30 transition-colors group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-white group-hover:text-cyan-400 transition-colors">
-                          📍 {q.location}
-                        </span>
-                        <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
-                          q.magnitude >= 6 ? 'bg-red-900/50 text-red-400' :
-                          q.magnitude >= 5 ? 'bg-orange-900/50 text-orange-400' :
-                          'bg-yellow-900/50 text-yellow-400'
-                        }`}>
-                          M{q.magnitude}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        {q.distance} km • {q.depth} km depth
-                      </div>
-                    </button>
-                  ))}
+                  {SAMPLE_QUAKES.map((q, i) => {
+                    // Preview MMI untuk lokasi saat ini
+                    const previewDist = haversineDistance(q.latitude, q.longitude, selectedLocation.lat, selectedLocation.lng);
+                    const previewMMI = estimateMMI(q.magnitude, previewDist, q.depth);
+                    const isAboveThreshold = previewMMI >= MMI_THRESHOLD;
+
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => !isRunning && triggerQuake(q)}
+                        disabled={isRunning}
+                        className="w-full text-left p-2.5 bg-slate-900/50 hover:bg-slate-700/50 disabled:hover:bg-slate-900/50 rounded-lg border border-slate-700/30 transition-colors group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white group-hover:text-cyan-400 transition-colors">
+                            📍 {q.location}
+                          </span>
+                          <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                            q.magnitude >= 6 ? 'bg-red-900/50 text-red-400' :
+                            q.magnitude >= 5 ? 'bg-orange-900/50 text-orange-400' :
+                            'bg-yellow-900/50 text-yellow-400'
+                          }`}>
+                            M{q.magnitude}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-xs text-slate-500">
+                            {Math.round(previewDist)} km • MMI {previewMMI.toFixed(1)}
+                          </span>
+                          <span className={`text-xs ${isAboveThreshold ? 'text-orange-400' : 'text-emerald-400'}`}>
+                            {isAboveThreshold ? '⚠️' : '✓'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -569,20 +729,23 @@ export default function App() {
                 {history.length === 0 ? (
                   <p className="text-xs text-slate-500 text-center py-4">Belum ada simulasi</p>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {history.map((h, i) => {
-                      const level = getAlertLevel(h.magnitude, h.distance);
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {history.map((h) => {
+                      const level = getAlertLevel(h.mmi);
                       const info = getAlertInfo(level);
+                      const isBelow = h.mmi < MMI_THRESHOLD;
                       return (
                         <div key={h.id} className="flex items-center gap-2 p-2 bg-slate-900/40 rounded-lg border border-slate-700/20">
-                          <span className={`w-2 h-2 rounded-full ${info.bg}`}></span>
+                          <span className={`w-2 h-2 rounded-full ${isBelow ? 'bg-emerald-400' : info.bg}`}></span>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs text-white truncate">{h.location}</div>
                             <div className="text-xs text-slate-500">
-                              M{h.magnitude} • {new Date(h.timestamp).toLocaleTimeString('id-ID')}
+                              M{h.magnitude} • MMI {h.mmi.toFixed(1)} • {new Date(h.timestamp).toLocaleTimeString('id-ID')}
                             </div>
                           </div>
-                          <span className={`text-xs font-mono ${info.text}`}>{info.label}</span>
+                          <span className={`text-xs font-mono ${isBelow ? 'text-emerald-400' : info.text}`}>
+                            {isBelow ? 'AMAN' : info.label}
+                          </span>
                         </div>
                       );
                     })}
@@ -598,15 +761,15 @@ export default function App() {
                 <div className="space-y-3 text-xs text-slate-400">
                   <div className="flex gap-2">
                     <span className="w-5 h-5 rounded-full bg-cyan-900/50 text-cyan-400 flex items-center justify-center shrink-0 text-xs font-bold">1</span>
-                    <p>Gempa menghasilkan <strong className="text-cyan-400">Gelombang P</strong> (cepat, 6 km/s) yang terdeteksi sensor seismik pertama kali.</p>
+                    <p>Gempa menghasilkan <strong className="text-cyan-400">Gelombang P</strong> (cepat, 6 km/s) yang terdeteksi sensor seismik.</p>
                   </div>
                   <div className="flex gap-2">
                     <span className="w-5 h-5 rounded-full bg-orange-900/50 text-orange-400 flex items-center justify-center shrink-0 text-xs font-bold">2</span>
-                    <p>Sistem menghitung estimasi magnitudo, lokasi, dan waktu kedatangan <strong className="text-orange-400">Gelombang S</strong> (lambat, 3.5 km/s).</p>
+                    <p>Sistem menghitung estimasi magnitudo, lokasi, dan <strong className="text-orange-400">MMI</strong> di lokasi target.</p>
                   </div>
                   <div className="flex gap-2">
                     <span className="w-5 h-5 rounded-full bg-emerald-900/50 text-emerald-400 flex items-center justify-center shrink-0 text-xs font-bold">3</span>
-                    <p>Peringatan dikirim <strong className="text-emerald-400">sebelum guncangan tiba</strong>, memberi waktu untuk berlindung.</p>
+                    <p>Jika <strong className="text-emerald-400">MMI ≥ 3</strong>, peringatan dini dikirim sebelum guncangan tiba.</p>
                   </div>
                   <div className="flex gap-2">
                     <span className="w-5 h-5 rounded-full bg-red-900/50 text-red-400 flex items-center justify-center shrink-0 text-xs font-bold">!</span>
@@ -623,7 +786,7 @@ export default function App() {
       <footer className="border-t border-slate-700/50 mt-8">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <p className="text-center text-xs text-slate-600">
-            ⚠️ SIMULASI — Aplikasi ini hanya untuk edukasi dan demonstrasi konsep Earthquake Early Warning (EEW).
+            ⚠️ SIMULASI — Aplikasi <strong>Gempa Malut</strong> ini hanya untuk edukasi dan demonstrasi konsep Earthquake Early Warning (EEW) di wilayah Maluku Utara.
             Bukan sistem peringatan resmi. Untuk informasi gempa real-time, kunjungi{' '}
             <a href="https://bmkg.go.id" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:text-emerald-400">BMKG</a>.
           </p>
